@@ -15,7 +15,8 @@ export function parseCliConfig(args: string[], env: Record<string, string | unde
     args,
     allowPositionals: true,
     options: {
-      'plebbit-rpc-ws-url': { type: 'string' },
+      // WebSocket URL of the Plebbit RPC server
+      'rpc-url': { type: 'string' },
       'per-page': { type: 'string' },
       'pages': { type: 'string' },
       'bump-limit': { type: 'string' },
@@ -25,7 +26,7 @@ export function parseCliConfig(args: string[], env: Record<string, string | unde
   })
 
   const subplebbitAddress = positionals[0]
-  const rpcUrl = values['plebbit-rpc-ws-url'] ?? env.PLEBBIT_RPC_WS_URL
+  const rpcUrl = values['rpc-url'] ?? env.PLEBBIT_RPC_WS_URL
   const perPage = parseInt(values['per-page'] ?? env.PER_PAGE ?? '15', 10)
   const pages = parseInt(values['pages'] ?? env.PAGES ?? '10', 10)
   const bumpLimit = parseInt(values['bump-limit'] ?? env.BUMP_LIMIT ?? '300', 10)

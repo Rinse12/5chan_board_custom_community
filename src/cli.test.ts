@@ -4,8 +4,8 @@ import { parseCliConfig } from './cli-config.js'
 describe('parseCliConfig', () => {
   const emptyEnv: Record<string, string | undefined> = {}
 
-  it('resolves --plebbit-rpc-ws-url from CLI flag', () => {
-    const config = parseCliConfig(['board.eth', '--plebbit-rpc-ws-url', 'ws://cli:9138'], emptyEnv)
+  it('resolves --rpc-url from CLI flag', () => {
+    const config = parseCliConfig(['board.eth', '--rpc-url', 'ws://cli:9138'], emptyEnv)
     expect(config.rpcUrl).toBe('ws://cli:9138')
   })
 
@@ -14,9 +14,9 @@ describe('parseCliConfig', () => {
     expect(config.rpcUrl).toBe('ws://env:9138')
   })
 
-  it('CLI flag overrides env var for plebbit-rpc-ws-url', () => {
+  it('CLI flag overrides env var for rpc-url', () => {
     const config = parseCliConfig(
-      ['board.eth', '--plebbit-rpc-ws-url', 'ws://cli:9138'],
+      ['board.eth', '--rpc-url', 'ws://cli:9138'],
       { PLEBBIT_RPC_WS_URL: 'ws://env:9138' },
     )
     expect(config.rpcUrl).toBe('ws://cli:9138')

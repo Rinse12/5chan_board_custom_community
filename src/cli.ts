@@ -7,12 +7,12 @@ import { parseCliConfig } from './cli-config.js'
 const config = parseCliConfig(process.argv.slice(2), process.env)
 
 if (!config.subplebbitAddress) {
-  console.error('Usage: 5chan-archiver <subplebbit-address> [--plebbit-rpc-ws-url URL] [--per-page N] [--pages N] [--bump-limit N] [--archive-purge-seconds N] [--state-path PATH]')
+  console.error('Usage: 5chan-archiver <subplebbit-address> [--rpc-url URL] [--per-page N] [--pages N] [--bump-limit N] [--archive-purge-seconds N] [--state-path PATH]')
   process.exit(1)
 }
 
 if (!config.rpcUrl) {
-  console.error('Error: PLEBBIT_RPC_WS_URL is required (set via --plebbit-rpc-ws-url or PLEBBIT_RPC_WS_URL env var)')
+  console.error('Error: PLEBBIT_RPC_WS_URL is required (set via --rpc-url or PLEBBIT_RPC_WS_URL env var)')
   process.exit(1)
 }
 
