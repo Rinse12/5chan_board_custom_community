@@ -1,7 +1,18 @@
 {
   "name": "5chan-board-archiver",
   "version": "0.1.0",
+  "description": "4chan-style thread auto-archiving and purging for plebbit-js subplebbits",
+  "license": "GPL-3.0-only",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/plebbit/5chan_board_custom_community.git"
+  },
   "type": "module",
+  "files": [
+    "dist",
+    "LICENSE",
+    "README.md"
+  ],
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "exports": {
