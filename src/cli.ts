@@ -1,6 +1,5 @@
 #!/usr/bin/env node
 
-import Plebbit from '@plebbit/plebbit-js'
 import { startArchiver } from './archiver.js'
 import { parseCliConfig } from './cli-config.js'
 
@@ -11,13 +10,9 @@ if (!config.subplebbitAddress) {
   process.exit(1)
 }
 
-const plebbit = await Plebbit({
-  plebbitRpcClientsOptions: [config.rpcUrl],
-})
-
-const archiver = startArchiver({
+const archiver = await startArchiver({
   subplebbitAddress: config.subplebbitAddress,
-  plebbit,
+  plebbitRpcUrl: config.rpcUrl,
   statePath: config.statePath,
   perPage: config.perPage,
   pages: config.pages,

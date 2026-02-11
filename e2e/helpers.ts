@@ -5,7 +5,7 @@ import Plebbit from '@plebbit/plebbit-js'
 import { loadState } from '../src/state.js'
 import type { PlebbitInstance, Subplebbit, ArchiverState, Page, ThreadComment } from '../src/types.js'
 
-const RPC_URL = 'ws://localhost:9138'
+export const RPC_URL = 'ws://localhost:9138'
 
 export async function createPlebbitRpc(): Promise<PlebbitInstance> {
   return Plebbit({ plebbitRpcClientsOptions: [RPC_URL] })

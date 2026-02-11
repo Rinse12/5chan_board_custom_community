@@ -13,9 +13,9 @@ Works two ways:
 ```ts
 import { startArchiver } from '5chan-board-archiver'
 
-const archiver = startArchiver({
+const archiver = await startArchiver({
   subplebbitAddress: 'my-board.eth',
-  plebbit,        // Plebbit instance connected to RPC server
+  plebbitRpcUrl: 'ws://localhost:9138', // Plebbit RPC WebSocket URL
   statePath: '/custom/path/state.json', // optional, defaults to OS data dir
   perPage: 15,    // optional, default 15
   pages: 10,      // optional, default 10
@@ -27,8 +27,8 @@ const archiver = startArchiver({
 await archiver.stop()
 ```
 
-- `plebbit` is a Plebbit instance with RPC connectivity (signer is auto-managed — see Auto Mod Signer Management)
-- Returns `{ stop(): Promise<void> }` — stops the archiver and cleans up event listeners
+- `plebbitRpcUrl` is the WebSocket URL of a running Plebbit RPC server (Plebbit instance is created and destroyed internally)
+- Returns `{ stop(): Promise<void> }` — stops the archiver, cleans up event listeners, and destroys the Plebbit instance
 
 ## CLI Usage
 
@@ -61,10 +61,10 @@ No mod private key in `.env` — signers are auto-managed in the state JSON per 
 
 ## Auto Mod Signer Management
 
-On startup for each subplebbit:
+On startup for each subplebbit (using the internally-created Plebbit instance):
 
 1. Check state JSON for a signer private key for this subplebbit address
-2. If none exists, create one via `await plebbit.createSigner()` and save to state JSON
+2. If none exists, create one via `plebbit.createSigner()` and save to state JSON
 3. Check `subplebbit.roles` for the signer's address
 4. If not a mod, auto-add via `subplebbit.edit()` (works because we run on LocalSubplebbit or RpcLocalSubplebbit — we own the sub)
 
@@ -221,7 +221,7 @@ Reference: `plebbit-js/src/subplebbit/subplebbit-client-manager.ts:38`, `plebbit
 ### Module flow
 
 ```
-1. Connect to Plebbit RPC server via WebSocket and get plebbit instance
+1. Create Plebbit instance internally from the provided plebbitRpcUrl
 2. Load state JSON; get or create signer for this subplebbit via plebbit.createSigner()
 3. Get subplebbit (LocalSubplebbit or RpcLocalSubplebbit)
 4. Check subplebbit.roles for signer address; if missing, subplebbit.edit() to add as mod

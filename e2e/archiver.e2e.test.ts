@@ -2,6 +2,7 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import { startArchiver } from '../src/archiver.js'
 import type { PlebbitInstance, ArchiverResult } from '../src/types.js'
 import {
+  RPC_URL,
   createPlebbitRpc,
   createTestSubplebbit,
   publishThread,
@@ -53,9 +54,9 @@ describe('archiver E2E', () => {
         // capacity = perPage * pages = 1 * 2 = 2
         // Active sort: T4 (newest), T3, T2, T1 (oldest)
         // T1 and T2 are beyond capacity and should be locked
-        archiver = startArchiver({
+        archiver = await startArchiver({
           subplebbitAddress: address,
-          plebbit,
+          plebbitRpcUrl: RPC_URL,
           statePath,
           perPage: 1,
           pages: 2,
@@ -107,9 +108,9 @@ describe('archiver E2E', () => {
         await waitForThreadInPages(sub, t3.cid)
 
         // capacity = 5 * 1 = 5, we only have 3 threads — all within capacity
-        archiver = startArchiver({
+        archiver = await startArchiver({
           subplebbitAddress: address,
-          plebbit,
+          plebbitRpcUrl: RPC_URL,
           statePath,
           perPage: 5,
           pages: 1,
@@ -157,9 +158,9 @@ describe('archiver E2E', () => {
         await waitForReplyCount(sub, thread.cid, 3)
 
         // bumpLimit=3, large capacity so only bump limit triggers
-        archiver = startArchiver({
+        archiver = await startArchiver({
           subplebbitAddress: address,
-          plebbit,
+          plebbitRpcUrl: RPC_URL,
           statePath,
           bumpLimit: 3,
           perPage: 15,
@@ -198,9 +199,9 @@ describe('archiver E2E', () => {
         await waitForThreadInPages(sub, t2.cid)
 
         // capacity=1, purge after 5 seconds
-        archiver = startArchiver({
+        archiver = await startArchiver({
           subplebbitAddress: address,
-          plebbit,
+          plebbitRpcUrl: RPC_URL,
           statePath,
           perPage: 1,
           pages: 1,
@@ -263,9 +264,9 @@ describe('archiver E2E', () => {
 
         // capacity=1, so among non-pinned (T1, T2), only 1 fits
         // Active sort: T2 (newer), T1 (older) → T1 beyond capacity
-        archiver = startArchiver({
+        archiver = await startArchiver({
           subplebbitAddress: address,
-          plebbit,
+          plebbitRpcUrl: RPC_URL,
           statePath,
           perPage: 1,
           pages: 1,

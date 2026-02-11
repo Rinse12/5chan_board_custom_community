@@ -4,6 +4,10 @@ import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { loadState, saveState } from './state.js'
 import type { ArchiverState, PlebbitInstance, Page, ThreadComment } from './types.js'
+import Plebbit from '@plebbit/plebbit-js'
+import { startArchiver } from './archiver.js'
+
+vi.mock('@plebbit/plebbit-js')
 
 // Helper to create a mock thread
 function mockThread(cid: string, overrides: Record<string, unknown> = {}): ThreadComment {
@@ -22,17 +26,22 @@ function createMockPlebbit() {
   const mockSigner = { address: 'mock-address-123', privateKey: 'mock-pk-123' }
   const publishedModerations: MockModerationRecord[] = []
 
+  const instance = {
+    createSigner: vi.fn().mockResolvedValue({ ...mockSigner }),
+    getSubplebbit: vi.fn(),
+    createCommentModeration: vi.fn().mockImplementation((opts: MockModerationRecord) => ({
+      ...opts,
+      publish: vi.fn().mockImplementation(async () => {
+        publishedModerations.push(opts)
+      }),
+    })),
+    destroy: vi.fn().mockResolvedValue(undefined),
+  } as unknown as PlebbitInstance
+
+  vi.mocked(Plebbit).mockResolvedValue(instance)
+
   return {
-    instance: {
-      createSigner: vi.fn().mockResolvedValue({ ...mockSigner }),
-      getSubplebbit: vi.fn(),
-      createCommentModeration: vi.fn().mockImplementation((opts: MockModerationRecord) => ({
-        ...opts,
-        publish: vi.fn().mockImplementation(async () => {
-          publishedModerations.push(opts)
-        }),
-      })),
-    } as unknown as PlebbitInstance,
+    instance,
     mockSigner,
     publishedModerations,
   }
@@ -368,18 +377,12 @@ describe('archiver logic', () => {
       })
       vi.mocked(instance.getSubplebbit).mockResolvedValue(mockSub as unknown as Awaited<ReturnType<PlebbitInstance['getSubplebbit']>>)
 
-      const { startArchiver } = await import('./archiver.js')
-      const archiver = startArchiver({
+      const archiver = await startArchiver({
         subplebbitAddress: 'board.eth',
-        plebbit: instance,
+        plebbitRpcUrl: 'ws://localhost:9138',
         statePath,
         perPage: 15,
         pages: 10,
-      })
-
-      // Wait for startup + update event to fire
-      await vi.waitFor(() => {
-        expect(mockSub.update).toHaveBeenCalled()
       })
 
       // No moderations should have been published
@@ -402,23 +405,20 @@ describe('archiver logic', () => {
       })
       vi.mocked(instance.getSubplebbit).mockResolvedValue(mockSub as unknown as Awaited<ReturnType<PlebbitInstance['getSubplebbit']>>)
 
-      const { startArchiver } = await import('./archiver.js')
-      const archiver = startArchiver({
+      const archiver = await startArchiver({
         subplebbitAddress: 'board.eth',
-        plebbit: instance,
+        plebbitRpcUrl: 'ws://localhost:9138',
         statePath,
         perPage: 2,
         pages: 1, // capacity = 2, so 3 threads should get locked
-      })
-
-      await vi.waitFor(() => {
-        expect(getPage).toHaveBeenCalledWith({ cid: 'QmActivePage1' })
       })
 
       // Wait for moderations to be published (3 threads beyond capacity of 2)
       await vi.waitFor(() => {
         expect(publishedModerations).toHaveLength(3)
       })
+
+      expect(getPage).toHaveBeenCalledWith({ cid: 'QmActivePage1' })
 
       const lockedCids = publishedModerations.map((m) => m.commentCid)
       expect(lockedCids).toEqual(['QmActive2', 'QmActive3', 'QmActive4'])
@@ -441,27 +441,23 @@ describe('archiver logic', () => {
       })
       vi.mocked(instance.getSubplebbit).mockResolvedValue(mockSub as unknown as Awaited<ReturnType<PlebbitInstance['getSubplebbit']>>)
 
-      const { startArchiver } = await import('./archiver.js')
-      const archiver = startArchiver({
+      const archiver = await startArchiver({
         subplebbitAddress: 'board.eth',
-        plebbit: instance,
+        plebbitRpcUrl: 'ws://localhost:9138',
         statePath,
         perPage: 1,
         pages: 1, // capacity = 1, so 3 threads should get locked
       })
 
-      await vi.waitFor(() => {
-        expect(getPage).toHaveBeenCalledTimes(2)
-      })
-
-      // Verify both pages were fetched with correct CIDs
-      expect(getPage).toHaveBeenCalledWith({ cid: 'QmPage1Cid' })
-      expect(getPage).toHaveBeenCalledWith({ cid: 'QmPage2Cid' })
-
       // 4 total threads, capacity 1 → 3 locked
       await vi.waitFor(() => {
         expect(publishedModerations).toHaveLength(3)
       })
+
+      // Verify both pages were fetched with correct CIDs
+      expect(getPage).toHaveBeenCalledTimes(2)
+      expect(getPage).toHaveBeenCalledWith({ cid: 'QmPage1Cid' })
+      expect(getPage).toHaveBeenCalledWith({ cid: 'QmPage2Cid' })
 
       const lockedCids = publishedModerations.map((m) => m.commentCid)
       expect(lockedCids).toEqual(['QmP1b', 'QmP2a', 'QmP2b'])
@@ -486,17 +482,12 @@ describe('archiver logic', () => {
       })
       vi.mocked(instance.getSubplebbit).mockResolvedValue(mockSub as unknown as Awaited<ReturnType<PlebbitInstance['getSubplebbit']>>)
 
-      const { startArchiver } = await import('./archiver.js')
-      const archiver = startArchiver({
+      const archiver = await startArchiver({
         subplebbitAddress: 'board.eth',
-        plebbit: instance,
+        plebbitRpcUrl: 'ws://localhost:9138',
         statePath,
         perPage: 1,
         pages: 2, // capacity = 2, so 2 threads should get locked
-      })
-
-      await vi.waitFor(() => {
-        expect(mockSub.update).toHaveBeenCalled()
       })
 
       await vi.waitFor(() => {
@@ -537,17 +528,12 @@ describe('archiver logic', () => {
       })
       vi.mocked(instance.getSubplebbit).mockResolvedValue(mockSub as unknown as Awaited<ReturnType<PlebbitInstance['getSubplebbit']>>)
 
-      const { startArchiver } = await import('./archiver.js')
-      const archiver = startArchiver({
+      const archiver = await startArchiver({
         subplebbitAddress: 'board.eth',
-        plebbit: instance,
+        plebbitRpcUrl: 'ws://localhost:9138',
         statePath,
         perPage: 1,
         pages: 1, // capacity = 1, so 3 threads locked
-      })
-
-      await vi.waitFor(() => {
-        expect(getPage).toHaveBeenCalledWith({ cid: 'QmHotPage2' })
       })
 
       // All 4 threads collected, sorted by lastReplyTimestamp desc: QmH1(500), QmH2(400), QmH3(300), QmH4(200)
@@ -555,6 +541,8 @@ describe('archiver logic', () => {
       await vi.waitFor(() => {
         expect(publishedModerations).toHaveLength(3)
       })
+
+      expect(getPage).toHaveBeenCalledWith({ cid: 'QmHotPage2' })
 
       const lockedCids = publishedModerations.map((m) => m.commentCid)
       expect(lockedCids).toEqual(['QmH2', 'QmH3', 'QmH4'])
@@ -569,18 +557,15 @@ describe('archiver logic', () => {
       })
       vi.mocked(instance.getSubplebbit).mockResolvedValue(mockSub as unknown as Awaited<ReturnType<PlebbitInstance['getSubplebbit']>>)
 
-      const { startArchiver } = await import('./archiver.js')
       // No statePath passed — should use defaultStatePath() without error
-      const archiver = startArchiver({
+      const archiver = await startArchiver({
         subplebbitAddress: 'board.eth',
-        plebbit: instance,
+        plebbitRpcUrl: 'ws://localhost:9138',
         perPage: 15,
         pages: 10,
       })
 
-      await vi.waitFor(() => {
-        expect(mockSub.update).toHaveBeenCalled()
-      })
+      expect(mockSub.update).toHaveBeenCalled()
 
       await archiver.stop()
     })

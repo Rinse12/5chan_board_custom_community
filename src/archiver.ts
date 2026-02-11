@@ -1,3 +1,4 @@
+import Plebbit from '@plebbit/plebbit-js'
 import Logger from '@plebbit/plebbit-logger'
 import { loadState, saveState, defaultStatePath } from './state.js'
 import type { ArchiverOptions, ArchiverResult, ArchiverState, Subplebbit, Signer, ThreadComment, Page } from './types.js'
@@ -11,10 +12,10 @@ const DEFAULTS = {
   archivePurgeSeconds: 172800,
 } as const
 
-export function startArchiver(options: ArchiverOptions): ArchiverResult {
+export async function startArchiver(options: ArchiverOptions): Promise<ArchiverResult> {
   const {
     subplebbitAddress,
-    plebbit,
+    plebbitRpcUrl,
     perPage = DEFAULTS.perPage,
     pages = DEFAULTS.pages,
     bumpLimit = DEFAULTS.bumpLimit,
@@ -27,6 +28,8 @@ export function startArchiver(options: ArchiverOptions): ArchiverResult {
   let stopped = false
 
   log(`starting archiver for ${subplebbitAddress} (capacity=${maxThreads}, bumpLimit=${bumpLimit}, purgeAfter=${archivePurgeSeconds}s)`)
+
+  const plebbit = await Plebbit({ plebbitRpcClientsOptions: [plebbitRpcUrl] })
 
   async function ensureModRole(subplebbit: Subplebbit, signerAddress: string): Promise<void> {
     const roles = subplebbit.roles ?? {}
@@ -158,34 +161,27 @@ export function startArchiver(options: ArchiverOptions): ArchiverResult {
     }
   }
 
-  // Main startup
-  let subplebbit: Subplebbit
+  // Startup: get signer, subplebbit, ensure mod role, subscribe to updates
+  const signer = await getOrCreateSigner()
+  const subplebbit = await plebbit.getSubplebbit({ address: subplebbitAddress })
+  await ensureModRole(subplebbit, signer.address)
+
   const updateHandler = () => {
     getOrCreateSigner().then((signer) => handleUpdate(subplebbit, signer)).catch((err) => {
       log.error(`update handler error: ${err}`)
     })
   }
 
-  ;(async () => {
-    try {
-      const signer = await getOrCreateSigner()
-      subplebbit = await plebbit.getSubplebbit({ address: subplebbitAddress })
-      await ensureModRole(subplebbit, signer.address)
-      subplebbit.on('update', updateHandler)
-      await subplebbit.update()
-      log(`archiver running for ${subplebbitAddress}`)
-    } catch (err) {
-      log.error(`failed to start archiver: ${err}`)
-    }
-  })()
+  subplebbit.on('update', updateHandler)
+  await subplebbit.update()
+  log(`archiver running for ${subplebbitAddress}`)
 
   return {
     async stop() {
       stopped = true
-      if (subplebbit) {
-        subplebbit.removeListener('update', updateHandler)
-        await subplebbit.stop?.()
-      }
+      subplebbit.removeListener('update', updateHandler)
+      await subplebbit.stop?.()
+      await plebbit.destroy()
       log(`archiver stopped for ${subplebbitAddress}`)
     },
   }
