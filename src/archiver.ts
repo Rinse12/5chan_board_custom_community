@@ -84,13 +84,14 @@ export function startArchiver(options: ArchiverOptions): ArchiverResult {
     if (stopped) return
 
     // Scenario 3: no posts at all — nothing to archive.
-    if (!subplebbit.posts.pageCids.active && !subplebbit.posts.pages.hot) {
+    const preloadedPage = Object.values(subplebbit.posts.pages)[0]
+    if (!subplebbit.posts.pageCids.active && !preloadedPage) {
       return
     }
 
     // Build full thread list from active sort pages.
-    // The subplebbit IPFS record is capped at 1MB total. subplebbit.posts.pages.hot
-    // is preloaded into whatever space remains. If all posts fit, there's no nextCid.
+    // The subplebbit IPFS record is capped at 1MB total. The first preloaded page
+    // is loaded into whatever space remains. If all posts fit, there's no nextCid.
     // If they don't fit, nextCid points to additional pages to fetch.
     const threads: ThreadComment[] = []
 
@@ -102,12 +103,20 @@ export function startArchiver(options: ArchiverOptions): ArchiverResult {
         page = await subplebbit.posts.getPage({ cid: page.nextCid })
         threads.push(...page.comments)
       }
-    } else {
-      // Scenario 2: only preloaded hot page available
-      // TODO: calculate active sort from subplebbit.posts.pages.hot using plebbit-js activeScore
-      if (subplebbit.posts.pages.hot?.comments) {
-        threads.push(...subplebbit.posts.pages.hot.comments)
+    } else if (preloadedPage?.comments) {
+      // Scenario 2: no pageCids.active — collect all preloaded pages, sort by active
+      threads.push(...preloadedPage.comments)
+      let nextCid = preloadedPage.nextCid
+      while (nextCid) {
+        const page: Page = await subplebbit.posts.getPage({ cid: nextCid })
+        threads.push(...page.comments)
+        nextCid = page.nextCid
       }
+      threads.sort((a, b) => {
+        const diff = (b.lastReplyTimestamp ?? 0) - (a.lastReplyTimestamp ?? 0)
+        if (diff !== 0) return diff
+        return (b.postNumber ?? 0) - (a.postNumber ?? 0)
+      })
     }
 
     // Filter out pinned threads

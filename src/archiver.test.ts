@@ -152,6 +152,37 @@ describe('archiver logic', () => {
     })
   })
 
+  describe('active sort from hot pages', () => {
+    it('sorts threads by lastReplyTimestamp descending', () => {
+      const threads = [
+        mockThread('QmA', { lastReplyTimestamp: 100 }),
+        mockThread('QmB', { lastReplyTimestamp: 300 }),
+        mockThread('QmC', { lastReplyTimestamp: 200 }),
+      ]
+      threads.sort((a, b) => {
+        const diff = (b.lastReplyTimestamp ?? 0) - (a.lastReplyTimestamp ?? 0)
+        if (diff !== 0) return diff
+        return (b.postNumber ?? 0) - (a.postNumber ?? 0)
+      })
+      expect(threads.map((t) => t.cid)).toEqual(['QmB', 'QmC', 'QmA'])
+    })
+
+    it('breaks ties by postNumber descending', () => {
+      const threads = [
+        mockThread('QmX', { lastReplyTimestamp: 500, postNumber: 10 }),
+        mockThread('QmY', { lastReplyTimestamp: 500, postNumber: 30 }),
+        mockThread('QmZ', { lastReplyTimestamp: 500, postNumber: 20 }),
+      ]
+      threads.sort((a, b) => {
+        const diff = (b.lastReplyTimestamp ?? 0) - (a.lastReplyTimestamp ?? 0)
+        if (diff !== 0) return diff
+        return (b.postNumber ?? 0) - (a.postNumber ?? 0)
+      })
+      // Same timestamp → sorted by postNumber desc: 30, 20, 10
+      expect(threads.map((t) => t.cid)).toEqual(['QmY', 'QmZ', 'QmX'])
+    })
+  })
+
   describe('bump limit detection', () => {
     it('identifies threads at or above bump limit', () => {
       const bumpLimit = 300
@@ -437,7 +468,13 @@ describe('archiver logic', () => {
 
     it('falls back to preloaded hot page when pageCids.active is absent', async () => {
       const { instance, publishedModerations } = createMockPlebbit(dir)
-      const hotThreads = Array.from({ length: 4 }, (_, i) => mockThread(`QmHot${i}`))
+      // Threads with lastReplyTimestamp so active sort is deterministic
+      const hotThreads = [
+        mockThread('QmHot0', { lastReplyTimestamp: 400, postNumber: 1 }),
+        mockThread('QmHot1', { lastReplyTimestamp: 300, postNumber: 2 }),
+        mockThread('QmHot2', { lastReplyTimestamp: 200, postNumber: 3 }),
+        mockThread('QmHot3', { lastReplyTimestamp: 100, postNumber: 4 }),
+      ]
 
       const mockSub = createMockSubplebbit({
         pageCids: {}, // no active pageCid
@@ -463,8 +500,60 @@ describe('archiver logic', () => {
         expect(publishedModerations).toHaveLength(2)
       })
 
+      // After sort by lastReplyTimestamp desc: QmHot0(400), QmHot1(300), QmHot2(200), QmHot3(100)
+      // Capacity 2 → QmHot2 and QmHot3 get locked
       const lockedCids = publishedModerations.map((m) => m.commentCid)
       expect(lockedCids).toEqual(['QmHot2', 'QmHot3'])
+      await archiver.stop()
+    })
+
+    it('paginates hot pages via nextCid when pageCids.active is absent', async () => {
+      const { instance, publishedModerations } = createMockPlebbit(dir)
+      // Page 1 (preloaded): newer threads
+      const page1Threads = [
+        mockThread('QmH1', { lastReplyTimestamp: 500, postNumber: 10 }),
+        mockThread('QmH2', { lastReplyTimestamp: 400, postNumber: 9 }),
+      ]
+      // Page 2 (fetched via nextCid): older threads
+      const page2Threads = [
+        mockThread('QmH3', { lastReplyTimestamp: 300, postNumber: 8 }),
+        mockThread('QmH4', { lastReplyTimestamp: 200, postNumber: 7 }),
+      ]
+
+      const getPage = vi.fn().mockResolvedValue({
+        comments: page2Threads,
+        nextCid: undefined,
+      } as Page)
+
+      const mockSub = createMockSubplebbit({
+        pageCids: {}, // no active pageCid
+        pages: {
+          hot: { comments: page1Threads, nextCid: 'QmHotPage2' } as Page,
+        },
+        getPage,
+      })
+      vi.mocked(instance.getSubplebbit).mockResolvedValue(mockSub as unknown as Awaited<ReturnType<PlebbitInstance['getSubplebbit']>>)
+
+      const { startArchiver } = await import('./archiver.js')
+      const archiver = startArchiver({
+        subplebbitAddress: 'board.eth',
+        plebbit: instance,
+        perPage: 1,
+        pages: 1, // capacity = 1, so 3 threads locked
+      })
+
+      await vi.waitFor(() => {
+        expect(getPage).toHaveBeenCalledWith({ cid: 'QmHotPage2' })
+      })
+
+      // All 4 threads collected, sorted by lastReplyTimestamp desc: QmH1(500), QmH2(400), QmH3(300), QmH4(200)
+      // Capacity 1 → 3 locked
+      await vi.waitFor(() => {
+        expect(publishedModerations).toHaveLength(3)
+      })
+
+      const lockedCids = publishedModerations.map((m) => m.commentCid)
+      expect(lockedCids).toEqual(['QmH2', 'QmH3', 'QmH4'])
       await archiver.stop()
     })
   })
