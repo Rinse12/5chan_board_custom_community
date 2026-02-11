@@ -1,8 +1,8 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
-import { mkdtempSync, rmSync, readFileSync } from 'node:fs'
+import { mkdtempSync, rmSync, readFileSync, existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
-import { loadState, saveState } from './state.js'
+import { loadState, saveState, defaultStatePath } from './state.js'
 import type { ArchiverState } from './types.js'
 
 describe('state', () => {
@@ -86,6 +86,24 @@ describe('state', () => {
       const loaded = loadState(statePath)
       expect(loaded.signers).toEqual(state.signers)
       expect(loaded.lockedThreads).toEqual(state.lockedThreads)
+    })
+
+    it('auto-creates missing parent directories', () => {
+      const nestedPath = join(dir, 'a', 'b', 'c', 'state.json')
+      const state: ArchiverState = { signers: {}, lockedThreads: {} }
+      saveState(nestedPath, state)
+
+      expect(existsSync(nestedPath)).toBe(true)
+      const loaded = loadState(nestedPath)
+      expect(loaded).toEqual(state)
+    })
+  })
+
+  describe('defaultStatePath', () => {
+    it('returns a path ending with state.json under 5chan-archiver data dir', () => {
+      const path = defaultStatePath()
+      expect(path).toMatch(/5chan-archiver/)
+      expect(path).toMatch(/state\.json$/)
     })
   })
 })

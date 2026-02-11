@@ -1,6 +1,5 @@
 import Logger from '@plebbit/plebbit-logger'
-import { join } from 'node:path'
-import { loadState, saveState } from './state.js'
+import { loadState, saveState, defaultStatePath } from './state.js'
 import type { ArchiverOptions, ArchiverResult, ArchiverState, Subplebbit, Signer, ThreadComment, Page } from './types.js'
 
 const log = Logger('5chan-archiver')
@@ -23,7 +22,7 @@ export function startArchiver(options: ArchiverOptions): ArchiverResult {
   } = options
 
   const maxThreads = perPage * pages
-  const statePath = join(plebbit.dataPath!, '5chan-archiver-state.json')
+  const statePath = options.statePath ?? defaultStatePath()
   let state: ArchiverState = loadState(statePath)
   let stopped = false
 

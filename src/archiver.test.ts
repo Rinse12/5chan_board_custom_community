@@ -17,14 +17,13 @@ interface MockModerationRecord {
   signer: { address: string; privateKey: string; type: 'ed25519' }
 }
 
-// Helper to create a mock plebbit instance
-function createMockPlebbit(dataPath: string) {
+// Helper to create a mock plebbit instance (RPC-only, no dataPath)
+function createMockPlebbit() {
   const mockSigner = { address: 'mock-address-123', privateKey: 'mock-pk-123' }
   const publishedModerations: MockModerationRecord[] = []
 
   return {
     instance: {
-      dataPath,
       createSigner: vi.fn().mockResolvedValue({ ...mockSigner }),
       getSubplebbit: vi.fn(),
       createCommentModeration: vi.fn().mockImplementation((opts: MockModerationRecord) => ({
@@ -319,7 +318,7 @@ describe('archiver logic', () => {
 
   describe('createCommentModeration mock', () => {
     it('creates lock moderation with correct shape', async () => {
-      const { instance } = createMockPlebbit(dir)
+      const { instance } = createMockPlebbit()
       const mod = await instance.createCommentModeration({
         commentCid: 'QmTest',
         commentModeration: { locked: true },
@@ -336,7 +335,7 @@ describe('archiver logic', () => {
     })
 
     it('creates purge moderation with correct shape', async () => {
-      const { instance } = createMockPlebbit(dir)
+      const { instance } = createMockPlebbit()
       const mod = await instance.createCommentModeration({
         commentCid: 'QmTest',
         commentModeration: { purged: true },
@@ -347,7 +346,7 @@ describe('archiver logic', () => {
     })
 
     it('tracks published moderations', async () => {
-      const { instance, publishedModerations } = createMockPlebbit(dir)
+      const { instance, publishedModerations } = createMockPlebbit()
       const mod = await instance.createCommentModeration({
         commentCid: 'QmTest',
         commentModeration: { locked: true },
@@ -362,7 +361,7 @@ describe('archiver logic', () => {
 
   describe('thread fetching scenarios', () => {
     it('returns early when subplebbit has no posts', async () => {
-      const { instance, publishedModerations } = createMockPlebbit(dir)
+      const { instance, publishedModerations } = createMockPlebbit()
       const mockSub = createMockSubplebbit({
         pageCids: {},
         pages: {},
@@ -373,6 +372,7 @@ describe('archiver logic', () => {
       const archiver = startArchiver({
         subplebbitAddress: 'board.eth',
         plebbit: instance,
+        statePath,
         perPage: 15,
         pages: 10,
       })
@@ -388,7 +388,7 @@ describe('archiver logic', () => {
     })
 
     it('fetches all threads via pageCids.active with single page', async () => {
-      const { instance, publishedModerations } = createMockPlebbit(dir)
+      const { instance, publishedModerations } = createMockPlebbit()
       const threadsOnPage = Array.from({ length: 5 }, (_, i) => mockThread(`QmActive${i}`))
       const getPage = vi.fn().mockResolvedValue({
         comments: threadsOnPage,
@@ -406,6 +406,7 @@ describe('archiver logic', () => {
       const archiver = startArchiver({
         subplebbitAddress: 'board.eth',
         plebbit: instance,
+        statePath,
         perPage: 2,
         pages: 1, // capacity = 2, so 3 threads should get locked
       })
@@ -425,7 +426,7 @@ describe('archiver logic', () => {
     })
 
     it('paginates via nextCid when multiple pages exist', async () => {
-      const { instance, publishedModerations } = createMockPlebbit(dir)
+      const { instance, publishedModerations } = createMockPlebbit()
       const page1Threads = [mockThread('QmP1a'), mockThread('QmP1b')]
       const page2Threads = [mockThread('QmP2a'), mockThread('QmP2b')]
 
@@ -444,6 +445,7 @@ describe('archiver logic', () => {
       const archiver = startArchiver({
         subplebbitAddress: 'board.eth',
         plebbit: instance,
+        statePath,
         perPage: 1,
         pages: 1, // capacity = 1, so 3 threads should get locked
       })
@@ -467,7 +469,7 @@ describe('archiver logic', () => {
     })
 
     it('falls back to preloaded hot page when pageCids.active is absent', async () => {
-      const { instance, publishedModerations } = createMockPlebbit(dir)
+      const { instance, publishedModerations } = createMockPlebbit()
       // Threads with lastReplyTimestamp so active sort is deterministic
       const hotThreads = [
         mockThread('QmHot0', { lastReplyTimestamp: 400, postNumber: 1 }),
@@ -488,6 +490,7 @@ describe('archiver logic', () => {
       const archiver = startArchiver({
         subplebbitAddress: 'board.eth',
         plebbit: instance,
+        statePath,
         perPage: 1,
         pages: 2, // capacity = 2, so 2 threads should get locked
       })
@@ -508,7 +511,7 @@ describe('archiver logic', () => {
     })
 
     it('paginates hot pages via nextCid when pageCids.active is absent', async () => {
-      const { instance, publishedModerations } = createMockPlebbit(dir)
+      const { instance, publishedModerations } = createMockPlebbit()
       // Page 1 (preloaded): newer threads
       const page1Threads = [
         mockThread('QmH1', { lastReplyTimestamp: 500, postNumber: 10 }),
@@ -538,6 +541,7 @@ describe('archiver logic', () => {
       const archiver = startArchiver({
         subplebbitAddress: 'board.eth',
         plebbit: instance,
+        statePath,
         perPage: 1,
         pages: 1, // capacity = 1, so 3 threads locked
       })
@@ -554,6 +558,30 @@ describe('archiver logic', () => {
 
       const lockedCids = publishedModerations.map((m) => m.commentCid)
       expect(lockedCids).toEqual(['QmH2', 'QmH3', 'QmH4'])
+      await archiver.stop()
+    })
+
+    it('uses defaultStatePath when statePath is not provided', async () => {
+      const { instance } = createMockPlebbit()
+      const mockSub = createMockSubplebbit({
+        pageCids: {},
+        pages: {},
+      })
+      vi.mocked(instance.getSubplebbit).mockResolvedValue(mockSub as unknown as Awaited<ReturnType<PlebbitInstance['getSubplebbit']>>)
+
+      const { startArchiver } = await import('./archiver.js')
+      // No statePath passed — should use defaultStatePath() without error
+      const archiver = startArchiver({
+        subplebbitAddress: 'board.eth',
+        plebbit: instance,
+        perPage: 15,
+        pages: 10,
+      })
+
+      await vi.waitFor(() => {
+        expect(mockSub.update).toHaveBeenCalled()
+      })
+
       await archiver.stop()
     })
   })
