@@ -2,6 +2,8 @@
 
 An ESM TypeScript npm package that implements 4chan-style thread auto-archiving and purging for plebbit-js subplebbits. Uses plebbit-js's public API (`plebbit.createCommentModeration()`) — **no plebbit-js modifications required**.
 
+> **Node.js only.** This is a Node.js-only ESM package — it requires a Plebbit RPC server connection and uses Node.js APIs (`fs`, `node:util`). Apps using it as a library (like 5chan) must run the archiver in a Node.js environment, not in the browser.
+
 Works two ways:
 1. **Library** — imported by 5chan (web UI) as a dependency
 2. **CLI** — `node dist/cli.js <subplebbit-address> [--flags]`
@@ -13,7 +15,8 @@ import { startArchiver } from '5chan-board-archiver'
 
 const archiver = startArchiver({
   subplebbitAddress: 'my-board.eth',
-  plebbit,        // Plebbit instance from caller (with moderator signer)
+  plebbit,        // Plebbit instance connected to RPC server
+  statePath: '/custom/path/state.json', // optional, defaults to OS data dir
   perPage: 15,    // optional, default 15
   pages: 10,      // optional, default 10
   bumpLimit: 300, // optional, default 300
@@ -24,13 +27,13 @@ const archiver = startArchiver({
 await archiver.stop()
 ```
 
-- `plebbit` is a Plebbit instance from the caller
+- `plebbit` is a Plebbit instance with RPC connectivity (signer is auto-managed — see Auto Mod Signer Management)
 - Returns `{ stop(): Promise<void> }` — stops the archiver and cleans up event listeners
 
 ## CLI Usage
 
 ```bash
-node --env-file=.env dist/cli.js <subplebbit-address> [--per-page 15] [--pages 10] [--bump-limit 300] [--archive-purge-seconds 172800]
+node --env-file=.env dist/cli.js <subplebbit-address> [--rpc-url URL] [--per-page N] [--pages N] [--bump-limit N] [--archive-purge-seconds N] [--state-path PATH]
 ```
 
 - Uses Node 22's built-in `--env-file` flag (no dotenv dependency)
@@ -46,7 +49,8 @@ npm start -- <subplebbit-address> [--flags]
 ## .env Configuration
 
 ```env
-PLEBBIT_DATA_PATH=...
+PLEBBIT_RPC_WS_URL=ws://localhost:9138  # optional, defaults to ws://localhost:9138
+ARCHIVER_STATE_PATH=                     # optional, defaults to OS data dir (~/.local/share/5chan-archiver/state.json)
 PER_PAGE=15
 PAGES=10
 BUMP_LIMIT=300
@@ -68,7 +72,7 @@ Logged via `plebbit-logger` when creating signer or adding mod role.
 
 ## State Persistence
 
-`lockedAt` is not in plebbit-js's schema, so the script persists state to a JSON file in the plebbit data path.
+`lockedAt` is not in plebbit-js's schema, so the script persists state to a JSON file in the OS data directory (via `env-paths`: `~/.local/share/5chan-archiver/state.json`) or a custom path via `--state-path` / `ARCHIVER_STATE_PATH`.
 
 ```json
 {
@@ -163,7 +167,7 @@ External module using plebbit-js's public API:
 - No plebbit-js core modifications needed
 - Uses `plebbit.createCommentModeration()` for both locking and purging
 - Listens to subplebbit `update` events to detect new posts
-- Gets thread positions from `subplebbit.posts.pageCids.active` or calculates active sort from preloaded pages at `subplebbit.posts.pages.hot` using plebbit-js's `activeScore` function
+- Gets thread positions from `subplebbit.posts.pageCids.active`, or falls back to sorting preloaded pages by `lastReplyTimestamp` descending (then `postNumber`)
 
 ### Configurable settings
 
@@ -183,7 +187,7 @@ Uses 4chan field names for interoperability.
 Cannot do `subplebbit.posts.getPage("active")`. Must either:
 
 1. Use `subplebbit.posts.pageCids.active` to get the CID, then fetch that page
-2. Or calculate active sorting from preloaded pages at `subplebbit.posts.pages.hot` using imported `activeScore` rank function from plebbit-js
+2. Or fall back to sorting preloaded pages by `lastReplyTimestamp` descending, then `postNumber` (approximates active sort without needing `pageCids.active`)
 
 ### Subplebbit record size constraint
 
@@ -217,7 +221,7 @@ Reference: `plebbit-js/src/subplebbit/subplebbit-client-manager.ts:38`, `plebbit
 ### Module flow
 
 ```
-1. Create/get plebbit instance
+1. Connect to Plebbit RPC server via WebSocket and get plebbit instance
 2. Load state JSON; get or create signer for this subplebbit via plebbit.createSigner()
 3. Get subplebbit (LocalSubplebbit or RpcLocalSubplebbit)
 4. Check subplebbit.roles for signer address; if missing, subplebbit.edit() to add as mod
@@ -225,7 +229,7 @@ Reference: `plebbit-js/src/subplebbit/subplebbit-client-manager.ts:38`, `plebbit
 6. On each 'update' event:
    a. Determine thread source (three scenarios):
       1. pageCids.active exists → fetch via getPage(), paginate via nextCid
-      2. Only pages.hot exists → use preloaded page (TODO: calculate active sort)
+      2. Only pages.hot exists → use preloaded page, sort by lastReplyTimestamp desc then postNumber
       3. Neither exists → no posts, return early
    b. Walk through pages to build full ordered list of threads
    c. Filter out pinned threads
