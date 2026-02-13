@@ -29,6 +29,7 @@ function createMockPlebbit() {
   const instance = {
     createSigner: vi.fn().mockResolvedValue({ ...mockSigner }),
     getSubplebbit: vi.fn(),
+    subplebbits: [] as string[],
     createCommentModeration: vi.fn().mockImplementation((opts: MockModerationRecord) => ({
       ...opts,
       publish: vi.fn().mockImplementation(async () => {
@@ -546,6 +547,78 @@ describe('archiver logic', () => {
 
       const lockedCids = publishedModerations.map((m) => m.commentCid)
       expect(lockedCids).toEqual(['QmH2', 'QmH3', 'QmH4'])
+      await archiver.stop()
+    })
+
+    it('throws for remote subplebbit when signer has no mod role', async () => {
+      const { instance } = createMockPlebbit()
+      // subplebbits is empty → board.eth is remote
+      ;(instance as unknown as { subplebbits: string[] }).subplebbits = []
+
+      const mockSub = createMockSubplebbit({
+        pageCids: {},
+        pages: {},
+      })
+      // Signer has no role
+      ;(mockSub as unknown as { roles: Record<string, unknown> }).roles = {}
+      vi.mocked(instance.getSubplebbit).mockResolvedValue(mockSub as unknown as Awaited<ReturnType<PlebbitInstance['getSubplebbit']>>)
+
+      await expect(startArchiver({
+        subplebbitAddress: 'board.eth',
+        plebbitRpcUrl: 'ws://localhost:9138',
+        statePath,
+      })).rejects.toThrow(
+        'Signer mock-address-123 does not have a moderator role on remote subplebbit board.eth. Ask the subplebbit owner to add this address as a moderator.'
+      )
+    })
+
+    it('starts successfully for remote subplebbit when signer has mod role', async () => {
+      const { instance } = createMockPlebbit()
+      // subplebbits is empty → board.eth is remote
+      ;(instance as unknown as { subplebbits: string[] }).subplebbits = []
+
+      const mockSub = createMockSubplebbit({
+        pageCids: {},
+        pages: {},
+      })
+      // Signer already has moderator role
+      mockSub.roles = { 'mock-address-123': { role: 'moderator' as const } }
+      vi.mocked(instance.getSubplebbit).mockResolvedValue(mockSub as unknown as Awaited<ReturnType<PlebbitInstance['getSubplebbit']>>)
+
+      const archiver = await startArchiver({
+        subplebbitAddress: 'board.eth',
+        plebbitRpcUrl: 'ws://localhost:9138',
+        statePath,
+      })
+
+      // Should not have called edit (role already exists)
+      expect(mockSub.edit).not.toHaveBeenCalled()
+      await archiver.stop()
+    })
+
+    it('auto-grants mod role for local subplebbit without mod role', async () => {
+      const { instance } = createMockPlebbit()
+      // subplebbits includes board.eth → it's local
+      ;(instance as unknown as { subplebbits: string[] }).subplebbits = ['board.eth']
+
+      const mockSub = createMockSubplebbit({
+        pageCids: {},
+        pages: {},
+      })
+      // Signer has no role
+      ;(mockSub as unknown as { roles: Record<string, unknown> }).roles = {}
+      vi.mocked(instance.getSubplebbit).mockResolvedValue(mockSub as unknown as Awaited<ReturnType<PlebbitInstance['getSubplebbit']>>)
+
+      const archiver = await startArchiver({
+        subplebbitAddress: 'board.eth',
+        plebbitRpcUrl: 'ws://localhost:9138',
+        statePath,
+      })
+
+      // Should have called edit to auto-grant moderator role
+      expect(mockSub.edit).toHaveBeenCalledWith({
+        roles: { 'mock-address-123': { role: 'moderator' } },
+      })
       await archiver.stop()
     })
 

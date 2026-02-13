@@ -36,6 +36,11 @@ export async function startArchiver(options: ArchiverOptions): Promise<ArchiverR
     if (roles[signerAddress]?.role === 'moderator' || roles[signerAddress]?.role === 'admin' || roles[signerAddress]?.role === 'owner') {
       return
     }
+    if (!plebbit.subplebbits.includes(subplebbitAddress)) {
+      throw new Error(
+        `Signer ${signerAddress} does not have a moderator role on remote subplebbit ${subplebbitAddress}. Ask the subplebbit owner to add this address as a moderator.`
+      )
+    }
     log(`adding moderator role for ${signerAddress} on ${subplebbitAddress}`)
     await subplebbit.edit({
       roles: {
