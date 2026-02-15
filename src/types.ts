@@ -18,7 +18,7 @@ export type ThreadComment = Page['comments'][number]
 export interface ArchiverOptions {
   subplebbitAddress: string
   plebbitRpcUrl: string
-  statePath?: string
+  stateDir?: string
   perPage?: number
   pages?: number
   bumpLimit?: number

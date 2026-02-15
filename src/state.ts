@@ -8,8 +8,8 @@ const DEFAULT_STATE: ArchiverState = {
   lockedThreads: {},
 }
 
-export function defaultStatePath(): string {
-  return join(envPaths('5chan-archiver').data, 'state.json')
+export function defaultStateDir(): string {
+  return join(envPaths('5chan-archiver').data, '5chan_archiver_states')
 }
 
 export function loadState(path: string): ArchiverState {

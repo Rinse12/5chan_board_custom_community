@@ -7,7 +7,7 @@ export interface CliConfig {
   pages: number
   bumpLimit: number
   archivePurgeSeconds: number
-  statePath: string | undefined
+  stateDir: string | undefined
 }
 
 export function parseCliConfig(args: string[], env: Record<string, string | undefined>): CliConfig {
@@ -21,7 +21,7 @@ export function parseCliConfig(args: string[], env: Record<string, string | unde
       'pages': { type: 'string' },
       'bump-limit': { type: 'string' },
       'archive-purge-seconds': { type: 'string' },
-      'state-path': { type: 'string' },
+      'state-dir': { type: 'string' },
     },
   })
 
@@ -31,7 +31,7 @@ export function parseCliConfig(args: string[], env: Record<string, string | unde
   const pages = parseInt(values['pages'] ?? env.PAGES ?? '10', 10)
   const bumpLimit = parseInt(values['bump-limit'] ?? env.BUMP_LIMIT ?? '300', 10)
   const archivePurgeSeconds = parseInt(values['archive-purge-seconds'] ?? env.ARCHIVE_PURGE_SECONDS ?? '172800', 10)
-  const statePath = values['state-path'] ?? env.ARCHIVER_STATE_PATH ?? undefined
+  const stateDir = values['state-dir'] ?? env.ARCHIVER_STATE_DIR ?? undefined
 
-  return { subplebbitAddress, rpcUrl, perPage, pages, bumpLimit, archivePurgeSeconds, statePath }
+  return { subplebbitAddress, rpcUrl, perPage, pages, bumpLimit, archivePurgeSeconds, stateDir }
 }

@@ -6,14 +6,14 @@ import { parseCliConfig } from './cli-config.js'
 const config = parseCliConfig(process.argv.slice(2), process.env)
 
 if (!config.subplebbitAddress) {
-  console.error('Usage: 5chan-archiver <subplebbit-address> [--rpc-url URL] [--per-page N] [--pages N] [--bump-limit N] [--archive-purge-seconds N] [--state-path PATH]')
+  console.error('Usage: 5chan-archiver <subplebbit-address> [--rpc-url URL] [--per-page N] [--pages N] [--bump-limit N] [--archive-purge-seconds N] [--state-dir DIR]')
   process.exit(1)
 }
 
 const archiver = await startArchiver({
   subplebbitAddress: config.subplebbitAddress,
   plebbitRpcUrl: config.rpcUrl,
-  statePath: config.statePath,
+  stateDir: config.stateDir,
   perPage: config.perPage,
   pages: config.pages,
   bumpLimit: config.bumpLimit,

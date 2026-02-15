@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { mkdtempSync, rmSync, readFileSync, existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
-import { loadState, saveState, defaultStatePath } from './state.js'
+import { loadState, saveState, defaultStateDir } from './state.js'
 import type { ArchiverState } from './types.js'
 
 describe('state', () => {
@@ -99,11 +99,11 @@ describe('state', () => {
     })
   })
 
-  describe('defaultStatePath', () => {
-    it('returns a path ending with state.json under 5chan-archiver data dir', () => {
-      const path = defaultStatePath()
-      expect(path).toMatch(/5chan-archiver/)
-      expect(path).toMatch(/state\.json$/)
+  describe('defaultStateDir', () => {
+    it('returns a directory path under 5chan-archiver data dir', () => {
+      const dir = defaultStateDir()
+      expect(dir).toMatch(/5chan-archiver/)
+      expect(dir).toMatch(/5chan_archiver_states$/)
     })
   })
 })

@@ -43,7 +43,7 @@ describe('parseCliConfig', () => {
     expect(config.pages).toBe(10)
     expect(config.bumpLimit).toBe(300)
     expect(config.archivePurgeSeconds).toBe(172800)
-    expect(config.statePath).toBeUndefined()
+    expect(config.stateDir).toBeUndefined()
   })
 
   it('CLI flags override env vars for all options', () => {
@@ -54,21 +54,21 @@ describe('parseCliConfig', () => {
         '--pages', '5',
         '--bump-limit', '500',
         '--archive-purge-seconds', '86400',
-        '--state-path', '/cli/path',
+        '--state-dir', '/cli/path',
       ],
       {
         PER_PAGE: '10',
         PAGES: '3',
         BUMP_LIMIT: '100',
         ARCHIVE_PURGE_SECONDS: '3600',
-        ARCHIVER_STATE_PATH: '/env/path',
+        ARCHIVER_STATE_DIR: '/env/path',
       },
     )
     expect(config.perPage).toBe(25)
     expect(config.pages).toBe(5)
     expect(config.bumpLimit).toBe(500)
     expect(config.archivePurgeSeconds).toBe(86400)
-    expect(config.statePath).toBe('/cli/path')
+    expect(config.stateDir).toBe('/cli/path')
   })
 
   it('falls back to env vars when CLI flags not provided', () => {
@@ -77,12 +77,12 @@ describe('parseCliConfig', () => {
       PAGES: '8',
       BUMP_LIMIT: '200',
       ARCHIVE_PURGE_SECONDS: '7200',
-      ARCHIVER_STATE_PATH: '/env/state',
+      ARCHIVER_STATE_DIR: '/env/state',
     })
     expect(config.perPage).toBe(20)
     expect(config.pages).toBe(8)
     expect(config.bumpLimit).toBe(200)
     expect(config.archivePurgeSeconds).toBe(7200)
-    expect(config.statePath).toBe('/env/state')
+    expect(config.stateDir).toBe('/env/state')
   })
 })

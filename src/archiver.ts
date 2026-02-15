@@ -1,6 +1,7 @@
 import Plebbit from '@plebbit/plebbit-js'
 import Logger from '@plebbit/plebbit-logger'
-import { loadState, saveState, defaultStatePath } from './state.js'
+import { join } from 'node:path'
+import { loadState, saveState, defaultStateDir } from './state.js'
 import type { ArchiverOptions, ArchiverResult, ArchiverState, Subplebbit, Signer, ThreadComment, Page } from './types.js'
 
 const log = Logger('5chan-archiver')
@@ -23,7 +24,8 @@ export async function startArchiver(options: ArchiverOptions): Promise<ArchiverR
   } = options
 
   const maxThreads = perPage * pages
-  const statePath = options.statePath ?? defaultStatePath()
+  const stateDir = options.stateDir ?? defaultStateDir()
+  const statePath = join(stateDir, `${subplebbitAddress}.json`)
   let state: ArchiverState = loadState(statePath)
   let stopped = false
 
@@ -171,10 +173,31 @@ export async function startArchiver(options: ArchiverOptions): Promise<ArchiverR
   const subplebbit = await plebbit.getSubplebbit({ address: subplebbitAddress })
   await ensureModRole(subplebbit, signer.address)
 
+  let updateRunning = false
+  let updatePendingRerun = false
+
   const updateHandler = () => {
-    getOrCreateSigner().then((signer) => handleUpdate(subplebbit, signer)).catch((err) => {
-      log.error(`update handler error: ${err}`)
-    })
+    if (updateRunning) {
+      updatePendingRerun = true
+      return
+    }
+    updateRunning = true
+
+    const run = async (): Promise<void> => {
+      try {
+        const signer = await getOrCreateSigner()
+        await handleUpdate(subplebbit, signer)
+      } catch (err) {
+        log.error(`update handler error: ${err}`)
+      }
+      if (updatePendingRerun && !stopped) {
+        updatePendingRerun = false
+        return run()
+      }
+      updateRunning = false
+    }
+
+    run()
   }
 
   subplebbit.on('update', updateHandler)
