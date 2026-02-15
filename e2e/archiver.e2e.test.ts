@@ -8,10 +8,10 @@ import {
   publishThread,
   publishReply,
   waitForThreadInPages,
-  waitForThreadLocked,
+  waitForThreadArchived,
   waitForThreadPinned,
   waitForReplyCount,
-  waitForLockedInState,
+  waitForArchivedInState,
   waitForPurgedFromState,
   waitForSignerInState,
   createTempStateDir,
@@ -31,8 +31,8 @@ describe('archiver E2E', () => {
     await plebbit.destroy()
   })
 
-  describe('capacity locking', () => {
-    it('locks threads beyond capacity', async () => {
+  describe('capacity archiving', () => {
+    it('archives threads beyond capacity', async () => {
       const { sub, address } = await createTestSubplebbit(plebbit)
       const { dir, statePath } = createTempStateDir()
       let archiver: ArchiverResult | undefined
@@ -53,7 +53,7 @@ describe('archiver E2E', () => {
 
         // capacity = perPage * pages = 1 * 2 = 2
         // Active sort: T4 (newest), T3, T2, T1 (oldest)
-        // T1 and T2 are beyond capacity and should be locked
+        // T1 and T2 are beyond capacity and should be archived
         archiver = await startArchiver({
           subplebbitAddress: address,
           plebbitRpcUrl: RPC_URL,
@@ -62,28 +62,28 @@ describe('archiver E2E', () => {
           pages: 2,
         })
 
-        // Wait for the oldest threads to be locked in state
-        await waitForLockedInState(statePath, t1.cid)
-        await waitForLockedInState(statePath, t2.cid)
+        // Wait for the oldest threads to be archived in state
+        await waitForArchivedInState(statePath, t1.cid)
+        await waitForArchivedInState(statePath, t2.cid)
 
         // Verify state file
         const state = readStateFile(statePath)
-        expect(state.lockedThreads[t1.cid]).toBeDefined()
-        expect(state.lockedThreads[t2.cid]).toBeDefined()
-        expect(state.lockedThreads[t3.cid]).toBeUndefined()
-        expect(state.lockedThreads[t4.cid]).toBeUndefined()
+        expect(state.archivedThreads[t1.cid]).toBeDefined()
+        expect(state.archivedThreads[t2.cid]).toBeDefined()
+        expect(state.archivedThreads[t3.cid]).toBeUndefined()
+        expect(state.archivedThreads[t4.cid]).toBeUndefined()
         expect(state.signers[address]).toBeDefined()
 
-        // Verify threads are actually locked in subplebbit pages
-        await waitForThreadLocked(sub, t1.cid)
-        await waitForThreadLocked(sub, t2.cid)
+        // Verify threads are actually archived in subplebbit pages
+        await waitForThreadArchived(sub, t1.cid)
+        await waitForThreadArchived(sub, t2.cid)
 
-        // Verify T3 and T4 are NOT locked in pages
+        // Verify T3 and T4 are NOT archived in pages
         const threads = await getAllThreads(sub)
         const t3InPages = threads.find((t) => t.cid === t3.cid)
         const t4InPages = threads.find((t) => t.cid === t4.cid)
-        expect(t3InPages?.locked).toBeUndefined()
-        expect(t4InPages?.locked).toBeUndefined()
+        expect(t3InPages?.archived).toBeUndefined()
+        expect(t4InPages?.archived).toBeUndefined()
       } finally {
         if (archiver) await archiver.stop()
         await sub.stop()
@@ -91,7 +91,7 @@ describe('archiver E2E', () => {
       }
     })
 
-    it('does not lock threads within capacity', async () => {
+    it('does not archive threads within capacity', async () => {
       const { sub, address } = await createTestSubplebbit(plebbit)
       const { dir, statePath } = createTempStateDir()
       let archiver: ArchiverResult | undefined
@@ -122,14 +122,14 @@ describe('archiver E2E', () => {
         // Give a few update cycles
         await new Promise((resolve) => setTimeout(resolve, 10_000))
 
-        // Verify no threads were locked in state
+        // Verify no threads were archived in state
         const state = readStateFile(statePath)
-        expect(Object.keys(state.lockedThreads)).toHaveLength(0)
+        expect(Object.keys(state.archivedThreads)).toHaveLength(0)
 
-        // Verify no threads are locked in pages
+        // Verify no threads are archived in pages
         const threads = await getAllThreads(sub)
         for (const thread of threads) {
-          expect(thread.locked).toBeUndefined()
+          expect(thread.archived).toBeUndefined()
         }
       } finally {
         if (archiver) await archiver.stop()
@@ -140,7 +140,7 @@ describe('archiver E2E', () => {
   })
 
   describe('bump limit', () => {
-    it('locks thread that reaches bump limit', async () => {
+    it('archives thread that reaches bump limit', async () => {
       const { sub, address } = await createTestSubplebbit(plebbit)
       const { dir, statePath } = createTempStateDir()
       let archiver: ArchiverResult | undefined
@@ -167,15 +167,15 @@ describe('archiver E2E', () => {
           pages: 10,
         })
 
-        // Wait for thread to be locked in state
-        await waitForLockedInState(statePath, thread.cid)
+        // Wait for thread to be archived in state
+        await waitForArchivedInState(statePath, thread.cid)
 
         // Verify state
         const state = readStateFile(statePath)
-        expect(state.lockedThreads[thread.cid]).toBeDefined()
+        expect(state.archivedThreads[thread.cid]).toBeDefined()
 
-        // Verify thread is actually locked in subplebbit pages
-        await waitForThreadLocked(sub, thread.cid)
+        // Verify thread is actually archived in subplebbit pages
+        await waitForThreadArchived(sub, thread.cid)
       } finally {
         if (archiver) await archiver.stop()
         await sub.stop()
@@ -185,7 +185,7 @@ describe('archiver E2E', () => {
   })
 
   describe('purge', () => {
-    it('purges locked thread after archivePurgeSeconds', async () => {
+    it('purges archived thread after archivePurgeSeconds', async () => {
       const { sub, address } = await createTestSubplebbit(plebbit)
       const { dir, statePath } = createTempStateDir()
       let archiver: ArchiverResult | undefined
@@ -208,19 +208,19 @@ describe('archiver E2E', () => {
           archivePurgeSeconds: 5,
         })
 
-        // T1 should get locked first (beyond capacity)
-        await waitForLockedInState(statePath, t1.cid)
+        // T1 should get archived first (beyond capacity)
+        await waitForArchivedInState(statePath, t1.cid)
 
-        // Verify it's locked in state
+        // Verify it's archived in state
         const stateBeforePurge = readStateFile(statePath)
-        expect(stateBeforePurge.lockedThreads[t1.cid]).toBeDefined()
+        expect(stateBeforePurge.archivedThreads[t1.cid]).toBeDefined()
 
         // Wait for purge (5s purge + polling time)
         await waitForPurgedFromState(statePath, t1.cid, 60_000)
 
         // Verify T1 removed from state (purged)
         const stateAfterPurge = readStateFile(statePath)
-        expect(stateAfterPurge.lockedThreads[t1.cid]).toBeUndefined()
+        expect(stateAfterPurge.archivedThreads[t1.cid]).toBeUndefined()
       } finally {
         if (archiver) await archiver.stop()
         await sub.stop()
@@ -230,7 +230,7 @@ describe('archiver E2E', () => {
   })
 
   describe('pinned thread exemption', () => {
-    it('does not lock pinned threads', async () => {
+    it('does not archive pinned threads', async () => {
       const { sub, address } = await createTestSubplebbit(plebbit)
       const { dir, statePath } = createTempStateDir()
       let archiver: ArchiverResult | undefined
@@ -272,27 +272,27 @@ describe('archiver E2E', () => {
           pages: 1,
         })
 
-        // Wait for T1 to be locked (oldest non-pinned beyond capacity)
-        await waitForLockedInState(statePath, t1.cid)
+        // Wait for T1 to be archived (oldest non-pinned beyond capacity)
+        await waitForArchivedInState(statePath, t1.cid)
 
         // Verify state
         const state = readStateFile(statePath)
-        expect(state.lockedThreads[t1.cid]).toBeDefined()
-        expect(state.lockedThreads[t2.cid]).toBeUndefined()
-        expect(state.lockedThreads[t3.cid]).toBeUndefined()
+        expect(state.archivedThreads[t1.cid]).toBeDefined()
+        expect(state.archivedThreads[t2.cid]).toBeUndefined()
+        expect(state.archivedThreads[t3.cid]).toBeUndefined()
 
-        // Verify T1 is actually locked in pages
-        await waitForThreadLocked(sub, t1.cid)
+        // Verify T1 is actually archived in pages
+        await waitForThreadArchived(sub, t1.cid)
 
-        // Verify T3 is NOT locked in pages (pinned exempt)
+        // Verify T3 is NOT archived in pages (pinned exempt)
         const threads = await getAllThreads(sub)
         const t3InPages = threads.find((t) => t.cid === t3.cid)
-        expect(t3InPages?.locked).toBeUndefined()
+        expect(t3InPages?.archived).toBeUndefined()
         expect(t3InPages?.pinned).toBe(true)
 
-        // Verify T2 is NOT locked in pages
+        // Verify T2 is NOT archived in pages
         const t2InPages = threads.find((t) => t.cid === t2.cid)
-        expect(t2InPages?.locked).toBeUndefined()
+        expect(t2InPages?.archived).toBeUndefined()
       } finally {
         if (archiver) await archiver.stop()
         await sub.stop()

@@ -33,8 +33,8 @@ export interface SignerState {
   privateKey: string
 }
 
-export interface LockedThread {
-  lockTimestamp: number
+export interface ArchivedThread {
+  archivedTimestamp: number
 }
 
 export interface ArchiverLock {
@@ -43,6 +43,6 @@ export interface ArchiverLock {
 
 export interface ArchiverState {
   signers: Record<string, SignerState>
-  lockedThreads: Record<string, LockedThread>
+  archivedThreads: Record<string, ArchivedThread>
   lock?: ArchiverLock
 }

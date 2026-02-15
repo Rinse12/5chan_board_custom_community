@@ -145,24 +145,24 @@ export async function waitForThreadInPages(sub: Subplebbit, threadCid: string, t
   })
 }
 
-/** Wait until a thread CID shows locked=true in the subplebbit's pages */
-export async function waitForThreadLocked(sub: Subplebbit, threadCid: string, timeoutMs = 120_000): Promise<void> {
+/** Wait until a thread CID shows archived=true in the subplebbit's pages */
+export async function waitForThreadArchived(sub: Subplebbit, threadCid: string, timeoutMs = 120_000): Promise<void> {
   const start = Date.now()
 
   const threads = await getAllThreads(sub)
   const thread = threads.find((t) => t.cid === threadCid)
-  if (thread?.locked) return
+  if (thread?.archived) return
 
   return new Promise<void>((resolve, reject) => {
     const timeout = setTimeout(() => {
       sub.removeListener('update', check)
-      reject(new Error(`waitForThreadLocked timed out for ${threadCid}`))
+      reject(new Error(`waitForThreadArchived timed out for ${threadCid}`))
     }, timeoutMs - (Date.now() - start))
 
     async function check() {
       const threads = await getAllThreads(sub)
       const thread = threads.find((t) => t.cid === threadCid)
-      if (thread?.locked) {
+      if (thread?.archived) {
         clearTimeout(timeout)
         sub.removeListener('update', check)
         resolve()
@@ -234,18 +234,18 @@ export async function waitForReplyCount(
   })
 }
 
-/** Wait until a CID appears in lockedThreads in the state JSON file */
-export async function waitForLockedInState(statePath: string, cid: string, timeoutMs = 120_000): Promise<void> {
+/** Wait until a CID appears in archivedThreads in the state JSON file */
+export async function waitForArchivedInState(statePath: string, cid: string, timeoutMs = 120_000): Promise<void> {
   const start = Date.now()
   return new Promise<void>((resolve, reject) => {
     const interval = setInterval(() => {
       if (Date.now() - start > timeoutMs) {
         clearInterval(interval)
-        reject(new Error(`waitForLockedInState timed out for ${cid}`))
+        reject(new Error(`waitForArchivedInState timed out for ${cid}`))
         return
       }
       const state = readStateFile(statePath)
-      if (state.lockedThreads[cid]) {
+      if (state.archivedThreads[cid]) {
         clearInterval(interval)
         resolve()
       }
@@ -253,7 +253,7 @@ export async function waitForLockedInState(statePath: string, cid: string, timeo
   })
 }
 
-/** Wait until a CID is removed from lockedThreads in the state JSON file (purged) */
+/** Wait until a CID is removed from archivedThreads in the state JSON file (purged) */
 export async function waitForPurgedFromState(statePath: string, cid: string, timeoutMs = 120_000): Promise<void> {
   const start = Date.now()
   return new Promise<void>((resolve, reject) => {
@@ -264,7 +264,7 @@ export async function waitForPurgedFromState(statePath: string, cid: string, tim
         return
       }
       const state = readStateFile(statePath)
-      if (!state.lockedThreads[cid]) {
+      if (!state.archivedThreads[cid]) {
         clearInterval(interval)
         resolve()
       }

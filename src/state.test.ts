@@ -21,13 +21,13 @@ describe('state', () => {
   describe('loadState', () => {
     it('returns default state when file does not exist', () => {
       const state = loadState(statePath)
-      expect(state).toEqual({ signers: {}, lockedThreads: {} })
+      expect(state).toEqual({ signers: {}, archivedThreads: {} })
     })
 
     it('loads existing state from file', () => {
       const existing: ArchiverState = {
         signers: { 'sub1.eth': { privateKey: 'pk123' } },
-        lockedThreads: { 'Qm123': { lockTimestamp: 1000 } },
+        archivedThreads: { 'Qm123': { archivedTimestamp: 1000 } },
       }
       saveState(statePath, existing)
       const loaded = loadState(statePath)
@@ -38,7 +38,7 @@ describe('state', () => {
       const { writeFileSync } = await import('node:fs')
       writeFileSync(statePath, 'not json')
       const state = loadState(statePath)
-      expect(state).toEqual({ signers: {}, lockedThreads: {} })
+      expect(state).toEqual({ signers: {}, archivedThreads: {} })
     })
   })
 
@@ -46,7 +46,7 @@ describe('state', () => {
     it('writes state as JSON', () => {
       const state: ArchiverState = {
         signers: { 'board.eth': { privateKey: 'abc' } },
-        lockedThreads: {},
+        archivedThreads: {},
       }
       saveState(statePath, state)
       const raw = readFileSync(statePath, 'utf-8')
@@ -56,41 +56,41 @@ describe('state', () => {
     it('overwrites previous state', () => {
       const state1: ArchiverState = {
         signers: {},
-        lockedThreads: { 'Qm1': { lockTimestamp: 100 } },
+        archivedThreads: { 'Qm1': { archivedTimestamp: 100 } },
       }
       saveState(statePath, state1)
 
       const state2: ArchiverState = {
         signers: {},
-        lockedThreads: { 'Qm2': { lockTimestamp: 200 } },
+        archivedThreads: { 'Qm2': { archivedTimestamp: 200 } },
       }
       saveState(statePath, state2)
 
       const loaded = loadState(statePath)
       expect(loaded).toEqual(state2)
-      expect(loaded.lockedThreads['Qm1']).toBeUndefined()
+      expect(loaded.archivedThreads['Qm1']).toBeUndefined()
     })
 
-    it('preserves both signers and lockedThreads', () => {
+    it('preserves both signers and archivedThreads', () => {
       const state: ArchiverState = {
         signers: {
           'sub1.eth': { privateKey: 'key1' },
           'sub2.eth': { privateKey: 'key2' },
         },
-        lockedThreads: {
-          'QmA': { lockTimestamp: 1000 },
-          'QmB': { lockTimestamp: 2000 },
+        archivedThreads: {
+          'QmA': { archivedTimestamp: 1000 },
+          'QmB': { archivedTimestamp: 2000 },
         },
       }
       saveState(statePath, state)
       const loaded = loadState(statePath)
       expect(loaded.signers).toEqual(state.signers)
-      expect(loaded.lockedThreads).toEqual(state.lockedThreads)
+      expect(loaded.archivedThreads).toEqual(state.archivedThreads)
     })
 
     it('auto-creates missing parent directories', () => {
       const nestedPath = join(dir, 'a', 'b', 'c', 'state.json')
-      const state: ArchiverState = { signers: {}, lockedThreads: {} }
+      const state: ArchiverState = { signers: {}, archivedThreads: {} }
       saveState(nestedPath, state)
 
       expect(existsSync(nestedPath)).toBe(true)

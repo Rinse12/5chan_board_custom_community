@@ -11,12 +11,12 @@ vi.mock('@plebbit/plebbit-js')
 
 // Helper to create a mock thread
 function mockThread(cid: string, overrides: Record<string, unknown> = {}): ThreadComment {
-  return { cid, pinned: false, locked: false, replyCount: 0, ...overrides } as unknown as ThreadComment
+  return { cid, pinned: false, archived: false, replyCount: 0, ...overrides } as unknown as ThreadComment
 }
 
 interface MockModerationRecord {
   commentCid: string
-  commentModeration: { locked?: boolean; purged?: boolean }
+  commentModeration: { archived?: boolean; purged?: boolean }
   subplebbitAddress: string
   signer: { address: string; privateKey: string; type: 'ed25519' }
 }
@@ -90,32 +90,32 @@ describe('archiver logic', () => {
   })
 
   describe('state-based thread tracking', () => {
-    it('records lockTimestamp when adding a locked thread', () => {
+    it('records archivedTimestamp when adding an archived thread', () => {
       const filePath = join(stateDir, 'test.json')
-      const state: ArchiverState = { signers: {}, lockedThreads: {} }
+      const state: ArchiverState = { signers: {}, archivedThreads: {} }
       const now = Math.floor(Date.now() / 1000)
-      state.lockedThreads['QmTest'] = { lockTimestamp: now }
+      state.archivedThreads['QmTest'] = { archivedTimestamp: now }
       saveState(filePath, state)
 
       const loaded = loadState(filePath)
-      expect(loaded.lockedThreads['QmTest'].lockTimestamp).toBe(now)
+      expect(loaded.archivedThreads['QmTest'].archivedTimestamp).toBe(now)
     })
 
     it('removes thread from state on purge', () => {
       const filePath = join(stateDir, 'test.json')
       const state: ArchiverState = {
         signers: {},
-        lockedThreads: {
-          'QmKeep': { lockTimestamp: 1000 },
-          'QmPurge': { lockTimestamp: 500 },
+        archivedThreads: {
+          'QmKeep': { archivedTimestamp: 1000 },
+          'QmPurge': { archivedTimestamp: 500 },
         },
       }
-      delete state.lockedThreads['QmPurge']
+      delete state.archivedThreads['QmPurge']
       saveState(filePath, state)
 
       const loaded = loadState(filePath)
-      expect(loaded.lockedThreads['QmKeep']).toBeDefined()
-      expect(loaded.lockedThreads['QmPurge']).toBeUndefined()
+      expect(loaded.archivedThreads['QmKeep']).toBeDefined()
+      expect(loaded.archivedThreads['QmPurge']).toBeUndefined()
     })
   })
 
@@ -145,21 +145,21 @@ describe('archiver logic', () => {
       expect(beyondCapacity.map((t) => t.cid)).toEqual(['Qm4', 'Qm5'])
     })
 
-    it('skips already locked threads', () => {
+    it('skips already archived threads', () => {
       const threads = [
         mockThread('Qm1'),
         mockThread('Qm2'),
-        mockThread('Qm3', { locked: true }),
+        mockThread('Qm3', { archived: true }),
         mockThread('Qm4'),
         mockThread('Qm5'),
       ]
       const maxThreads = 2
       const nonPinned = threads.filter((t) => !t.pinned)
       const beyondCapacity = nonPinned.slice(maxThreads)
-      const toLock = beyondCapacity.filter((t) => !t.locked)
+      const toArchive = beyondCapacity.filter((t) => !t.archived)
 
-      expect(toLock).toHaveLength(2)
-      expect(toLock.map((t) => t.cid)).toEqual(['Qm4', 'Qm5'])
+      expect(toArchive).toHaveLength(2)
+      expect(toArchive.map((t) => t.cid)).toEqual(['Qm4', 'Qm5'])
     })
   })
 
@@ -207,15 +207,15 @@ describe('archiver logic', () => {
       expect(atBumpLimit.map((t) => t.cid)).toEqual(['Qm2', 'Qm3'])
     })
 
-    it('skips locked threads when checking bump limit', () => {
+    it('skips archived threads when checking bump limit', () => {
       const bumpLimit = 300
       const threads = [
-        mockThread('Qm1', { replyCount: 300, locked: true }),
+        mockThread('Qm1', { replyCount: 300, archived: true }),
         mockThread('Qm2', { replyCount: 400 }),
       ]
-      const toLock = threads.filter((t) => t.replyCount >= bumpLimit && !t.locked)
-      expect(toLock).toHaveLength(1)
-      expect(toLock[0].cid).toBe('Qm2')
+      const toArchive = threads.filter((t) => t.replyCount >= bumpLimit && !t.archived)
+      expect(toArchive).toHaveLength(1)
+      expect(toArchive[0].cid).toBe('Qm2')
     })
   })
 
@@ -225,32 +225,32 @@ describe('archiver logic', () => {
       const now = Math.floor(Date.now() / 1000)
       const state: ArchiverState = {
         signers: {},
-        lockedThreads: {
-          'QmOld': { lockTimestamp: now - 200000 }, // > 48h ago
-          'QmRecent': { lockTimestamp: now - 1000 }, // < 48h ago
-          'QmExact': { lockTimestamp: now - 172800 }, // exactly 48h ago
+        archivedThreads: {
+          'QmOld': { archivedTimestamp: now - 200000 }, // > 48h ago
+          'QmRecent': { archivedTimestamp: now - 1000 }, // < 48h ago
+          'QmExact': { archivedTimestamp: now - 172800 }, // exactly 48h ago
         },
       }
 
-      const toPurge = Object.entries(state.lockedThreads)
-        .filter(([_, info]) => now - info.lockTimestamp > archivePurgeSeconds)
+      const toPurge = Object.entries(state.archivedThreads)
+        .filter(([_, info]) => now - info.archivedTimestamp > archivePurgeSeconds)
       // "QmExact" is exactly at the boundary (not >), so only QmOld
       expect(toPurge.map(([cid]) => cid)).toEqual(['QmOld'])
     })
 
-    it('does not purge threads locked less than archive_purge_seconds ago', () => {
+    it('does not purge threads archived less than archive_purge_seconds ago', () => {
       const archivePurgeSeconds = 172800
       const now = Math.floor(Date.now() / 1000)
       const state: ArchiverState = {
         signers: {},
-        lockedThreads: {
-          'Qm1': { lockTimestamp: now - 100 },
-          'Qm2': { lockTimestamp: now },
+        archivedThreads: {
+          'Qm1': { archivedTimestamp: now - 100 },
+          'Qm2': { archivedTimestamp: now },
         },
       }
 
-      const toPurge = Object.entries(state.lockedThreads)
-        .filter(([_, info]) => now - info.lockTimestamp > archivePurgeSeconds)
+      const toPurge = Object.entries(state.archivedThreads)
+        .filter(([_, info]) => now - info.archivedTimestamp > archivePurgeSeconds)
       expect(toPurge).toHaveLength(0)
     })
   })
@@ -258,7 +258,7 @@ describe('archiver logic', () => {
   describe('signer management', () => {
     it('persists signer to state file', () => {
       const filePath = join(stateDir, 'test.json')
-      const state: ArchiverState = { signers: {}, lockedThreads: {} }
+      const state: ArchiverState = { signers: {}, archivedThreads: {} }
       state.signers['my-board.eth'] = { privateKey: 'test-private-key' }
       saveState(filePath, state)
 
@@ -270,7 +270,7 @@ describe('archiver logic', () => {
       const filePath = join(stateDir, 'test.json')
       const state: ArchiverState = {
         signers: { 'board.eth': { privateKey: 'existing-key' } },
-        lockedThreads: {},
+        archivedThreads: {},
       }
       saveState(filePath, state)
 
@@ -286,7 +286,7 @@ describe('archiver logic', () => {
           'board1.eth': { privateKey: 'key1' },
           'board2.eth': { privateKey: 'key2' },
         },
-        lockedThreads: {},
+        archivedThreads: {},
       }
       saveState(filePath, state)
 
@@ -298,25 +298,25 @@ describe('archiver logic', () => {
   })
 
   describe('idempotency', () => {
-    it('skips threads already tracked in lockedThreads state', () => {
+    it('skips threads already tracked in archivedThreads state', () => {
       const state: ArchiverState = {
         signers: {},
-        lockedThreads: { 'QmAlready': { lockTimestamp: 1000 } },
+        archivedThreads: { 'QmAlready': { archivedTimestamp: 1000 } },
       }
       const threads = [mockThread('QmAlready'), mockThread('QmNew')]
       const maxThreads = 0 // all beyond capacity
 
       const nonPinned = threads.filter((t) => !t.pinned)
       const beyondCapacity = nonPinned.slice(maxThreads)
-      const toLock = beyondCapacity.filter((t) => !t.locked && !state.lockedThreads[t.cid])
+      const toArchive = beyondCapacity.filter((t) => !t.archived && !state.archivedThreads[t.cid])
 
-      expect(toLock).toHaveLength(1)
-      expect(toLock[0].cid).toBe('QmNew')
+      expect(toArchive).toHaveLength(1)
+      expect(toArchive[0].cid).toBe('QmNew')
     })
   })
 
   describe('cold start', () => {
-    it('handles many threads needing lock at once', () => {
+    it('handles many threads needing archive at once', () => {
       const perPage = 2
       const pages = 1
       const maxThreads = perPage * pages // 2
@@ -325,24 +325,24 @@ describe('archiver logic', () => {
       const threads = Array.from({ length: 50 }, (_, i) => mockThread(`Qm${i}`))
       const nonPinned = threads.filter((t) => !t.pinned)
       const beyondCapacity = nonPinned.slice(maxThreads)
-      const toLock = beyondCapacity.filter((t) => !t.locked)
+      const toArchive = beyondCapacity.filter((t) => !t.archived)
 
-      expect(toLock).toHaveLength(48)
+      expect(toArchive).toHaveLength(48)
     })
   })
 
   describe('createCommentModeration mock', () => {
-    it('creates lock moderation with correct shape', async () => {
+    it('creates archive moderation with correct shape', async () => {
       const { instance } = createMockPlebbit()
       const mod = await instance.createCommentModeration({
         commentCid: 'QmTest',
-        commentModeration: { locked: true },
+        commentModeration: { archived: true },
         subplebbitAddress: 'board.eth',
         signer: { address: 'addr', privateKey: 'pk', type: 'ed25519' },
       })
       expect(instance.createCommentModeration).toHaveBeenCalledWith({
         commentCid: 'QmTest',
-        commentModeration: { locked: true },
+        commentModeration: { archived: true },
         subplebbitAddress: 'board.eth',
         signer: { address: 'addr', privateKey: 'pk', type: 'ed25519' },
       })
@@ -364,7 +364,7 @@ describe('archiver logic', () => {
       const { instance, publishedModerations } = createMockPlebbit()
       const mod = await instance.createCommentModeration({
         commentCid: 'QmTest',
-        commentModeration: { locked: true },
+        commentModeration: { archived: true },
         subplebbitAddress: 'board.eth',
         signer: { address: 'addr', privateKey: 'pk', type: 'ed25519' },
       })
@@ -416,7 +416,7 @@ describe('archiver logic', () => {
         plebbitRpcUrl: 'ws://localhost:9138',
         stateDir,
         perPage: 2,
-        pages: 1, // capacity = 2, so 3 threads should get locked
+        pages: 1, // capacity = 2, so 3 threads should get archived
       })
 
       // Wait for moderations to be published (3 threads beyond capacity of 2)
@@ -426,8 +426,8 @@ describe('archiver logic', () => {
 
       expect(getPage).toHaveBeenCalledWith({ cid: 'QmActivePage1' })
 
-      const lockedCids = publishedModerations.map((m) => m.commentCid)
-      expect(lockedCids).toEqual(['QmActive2', 'QmActive3', 'QmActive4'])
+      const archivedCids = publishedModerations.map((m) => m.commentCid)
+      expect(archivedCids).toEqual(['QmActive2', 'QmActive3', 'QmActive4'])
       await archiver.stop()
     })
 
@@ -452,10 +452,10 @@ describe('archiver logic', () => {
         plebbitRpcUrl: 'ws://localhost:9138',
         stateDir,
         perPage: 1,
-        pages: 1, // capacity = 1, so 3 threads should get locked
+        pages: 1, // capacity = 1, so 3 threads should get archived
       })
 
-      // 4 total threads, capacity 1 → 3 locked
+      // 4 total threads, capacity 1 → 3 archived
       await vi.waitFor(() => {
         expect(publishedModerations).toHaveLength(3)
       })
@@ -465,8 +465,8 @@ describe('archiver logic', () => {
       expect(getPage).toHaveBeenCalledWith({ cid: 'QmPage1Cid' })
       expect(getPage).toHaveBeenCalledWith({ cid: 'QmPage2Cid' })
 
-      const lockedCids = publishedModerations.map((m) => m.commentCid)
-      expect(lockedCids).toEqual(['QmP1b', 'QmP2a', 'QmP2b'])
+      const archivedCids = publishedModerations.map((m) => m.commentCid)
+      expect(archivedCids).toEqual(['QmP1b', 'QmP2a', 'QmP2b'])
       await archiver.stop()
     })
 
@@ -493,7 +493,7 @@ describe('archiver logic', () => {
         plebbitRpcUrl: 'ws://localhost:9138',
         stateDir,
         perPage: 1,
-        pages: 2, // capacity = 2, so 2 threads should get locked
+        pages: 2, // capacity = 2, so 2 threads should get archived
       })
 
       await vi.waitFor(() => {
@@ -501,9 +501,9 @@ describe('archiver logic', () => {
       })
 
       // After sort by lastReplyTimestamp desc: QmHot0(400), QmHot1(300), QmHot2(200), QmHot3(100)
-      // Capacity 2 → QmHot2 and QmHot3 get locked
-      const lockedCids = publishedModerations.map((m) => m.commentCid)
-      expect(lockedCids).toEqual(['QmHot2', 'QmHot3'])
+      // Capacity 2 → QmHot2 and QmHot3 get archived
+      const archivedCids = publishedModerations.map((m) => m.commentCid)
+      expect(archivedCids).toEqual(['QmHot2', 'QmHot3'])
       await archiver.stop()
     })
 
@@ -539,19 +539,19 @@ describe('archiver logic', () => {
         plebbitRpcUrl: 'ws://localhost:9138',
         stateDir,
         perPage: 1,
-        pages: 1, // capacity = 1, so 3 threads locked
+        pages: 1, // capacity = 1, so 3 threads archived
       })
 
       // All 4 threads collected, sorted by lastReplyTimestamp desc: QmH1(500), QmH2(400), QmH3(300), QmH4(200)
-      // Capacity 1 → 3 locked
+      // Capacity 1 → 3 archived
       await vi.waitFor(() => {
         expect(publishedModerations).toHaveLength(3)
       })
 
       expect(getPage).toHaveBeenCalledWith({ cid: 'QmHotPage2' })
 
-      const lockedCids = publishedModerations.map((m) => m.commentCid)
-      expect(lockedCids).toEqual(['QmH2', 'QmH3', 'QmH4'])
+      const archivedCids = publishedModerations.map((m) => m.commentCid)
+      expect(archivedCids).toEqual(['QmH2', 'QmH3', 'QmH4'])
       await archiver.stop()
     })
 
@@ -753,7 +753,7 @@ describe('archiver logic', () => {
       const statePath = join(stateDir, 'board.eth.json')
       const state: ArchiverState = {
         signers: {},
-        lockedThreads: {},
+        archivedThreads: {},
         lock: { pid: process.pid },
       }
       saveState(statePath, state)
@@ -773,7 +773,7 @@ describe('archiver logic', () => {
       const statePath = join(stateDir, 'board.eth.json')
       const state: ArchiverState = {
         signers: {},
-        lockedThreads: {},
+        archivedThreads: {},
         lock: { pid: 999999 },
       }
       saveState(statePath, state)

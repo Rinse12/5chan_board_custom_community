@@ -35,11 +35,11 @@
     "start": "node --env-file=.env dist/cli.js"
   },
   "dependencies": {
-    "@plebbit/plebbit-js": "https://github.com/plebbit/plebbit-js",
-    "env-paths": "^4.0.0"
+    "@plebbit/plebbit-js": "https://github.com/plebbit/plebbit-js#41a631c9ef28631bbd41cc8f3915dd1fa2a9345c",
+    "env-paths": "4.0.0"
   },
   "devDependencies": {
-    "typescript": "^5.7.0",
-    "vitest": "^4.0.18"
+    "typescript": "5.9.3",
+    "vitest": "4.0.18"
   }
 }

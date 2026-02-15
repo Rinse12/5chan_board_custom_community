@@ -5,7 +5,7 @@ import type { ArchiverState } from './types.js'
 
 const DEFAULT_STATE: ArchiverState = {
   signers: {},
-  lockedThreads: {},
+  archivedThreads: {},
 }
 
 export function defaultStateDir(): string {

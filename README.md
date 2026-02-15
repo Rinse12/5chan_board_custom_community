@@ -72,24 +72,24 @@ Logged via `plebbit-logger` when creating signer or adding mod role.
 
 ## State Persistence
 
-`lockedAt` is not in plebbit-js's schema, so the script persists state to a JSON file in the OS data directory (via `env-paths`: `~/.local/share/5chan-archiver/state.json`) or a custom path via `--state-path` / `ARCHIVER_STATE_PATH`.
+`archivedAt` is not in plebbit-js's schema, so the script persists state to a JSON file in the OS data directory (via `env-paths`: `~/.local/share/5chan-archiver/state.json`) or a custom path via `--state-path` / `ARCHIVER_STATE_PATH`.
 
 ```json
 {
   "signers": {
     "<subplebbitAddress>": { "privateKey": "..." }
   },
-  "lockedThreads": {
-    "<commentCid>": { "lockTimestamp": 1234567890 }
+  "archivedThreads": {
+    "<commentCid>": { "archivedTimestamp": 1234567890 }
   }
 }
 ```
 
 - **`signers`**: maps subplebbit address → mod signer private key (auto-created if missing)
-- **`lockedThreads`**: maps comment CID → lock metadata
+- **`archivedThreads`**: maps comment CID → archive metadata
 - Top-level object allows adding future state categories
 - Per-entry objects allow adding future metadata
-- Loaded on startup, written on lock, entries removed on purge
+- Loaded on startup, written on archive, entries removed on purge
 
 ## Cold Start
 
@@ -97,14 +97,14 @@ The script may start long after the board has been running. On first run, many t
 
 ## Idempotency
 
-Before locking, checks the thread's `locked` property. Skips if already locked (plebbit-js throws on duplicate moderation actions).
+Before archiving, checks the thread's `archived` property. Skips if already archived (plebbit-js throws on duplicate moderation actions).
 
 ## Logging
 
 Uses `plebbit-logger` (same logger as the plebbit-js ecosystem). Key events logged:
 
 - Archiver start/stop
-- Threads locked (with CID and reason: capacity vs bump limit)
+- Threads archived (with CID and reason: capacity vs bump limit)
 - Threads purged
 - Mod role auto-added
 - Errors
@@ -162,7 +162,7 @@ External services (archive.4plebs.org, desuarchive.org) independently scrape and
 
 | Behavior | 4chan | This module |
 |----------|------|-------------|
-| **Bump limit** | Threads past bump limit still accept replies — they just stop rising in the catalog | Threads are **locked** (no more replies) because plebbit-js has no "stop bumping without locking" mechanism |
+| **Bump limit** | Threads past bump limit still accept replies — they just stop rising in the catalog | Threads are **archived** (no more replies) because plebbit-js has no "stop bumping without archiving" mechanism |
 | **Sage** | Replying with `sage` in the email field prevents the thread from being bumped | Not supported — plebbit has no equivalent mechanism, so all replies bump the thread |
 | **Image limit** | Per-thread image limit (e.g., 150 images on /b/) after which no more images can be posted | Not implemented — plebbit-js has its own file-size constraints but no per-thread image count limit |
 
@@ -173,7 +173,7 @@ External services (archive.4plebs.org, desuarchive.org) independently scrape and
 External module using plebbit-js's public API:
 
 - No plebbit-js core modifications needed
-- Uses `plebbit.createCommentModeration()` for both locking and purging
+- Uses `plebbit.createCommentModeration()` for both archiving and purging
 - Listens to subplebbit `update` events to detect new posts
 - Gets thread positions from `subplebbit.posts.pageCids.active`, or falls back to sorting preloaded pages by `lastReplyTimestamp` descending (then `postNumber`)
 
@@ -185,8 +185,8 @@ Uses 4chan field names for interoperability.
 |---------|---------|-------------|-------------|
 | `per_page` | 15 | 15–30 | Threads per index page |
 | `pages` | 10 | 1–10 | Number of index pages |
-| `bump_limit` | 300 | 300–500 | Max replies before thread is locked |
-| `archive_purge_seconds` | 172800 (48h) | ~48h | Seconds before locked posts are purged (no 4chan equivalent, 4chan uses ~48h) |
+| `bump_limit` | 300 | 300–500 | Max replies before thread is archived |
+| `archive_purge_seconds` | 172800 (48h) | ~48h | Seconds before archived posts are purged (no 4chan equivalent, 4chan uses ~48h) |
 
 **Max active threads** = `per_page × pages` (default: 150)
 
@@ -211,18 +211,18 @@ Reference: `plebbit-js/src/subplebbit/subplebbit-client-manager.ts:38`, `plebbit
 
 - After each subplebbit update, determine thread positions in active sort
 - Filter out pinned threads (they're exempt)
-- Count non-pinned threads; any beyond position `per_page × pages` → lock via `createCommentModeration({ commentModeration: { locked: true } })`
-- Locked threads are read-only (plebbit-js already enforces this)
+- Count non-pinned threads; any beyond position `per_page × pages` → archive via `createCommentModeration({ commentModeration: { archived: true } })`
+- Archived threads are read-only (plebbit-js already enforces this)
 
 ### Feature 2: Bump limit
 
 - Track reply counts for active threads
-- When a thread reaches `bump_limit` replies → lock it via `createCommentModeration({ commentModeration: { locked: true } })`
+- When a thread reaches `bump_limit` replies → archive it via `createCommentModeration({ commentModeration: { archived: true } })`
 
 ### Feature 3: Delayed purge
 
-- Track when threads were locked (archived)
-- After `archive_purge_seconds` has elapsed since locking → purge via `createCommentModeration({ commentModeration: { purged: true } })`
+- Track when threads were archived
+- After `archive_purge_seconds` has elapsed since archiving → purge via `createCommentModeration({ commentModeration: { purged: true } })`
 
 ### Module flow
 
@@ -240,14 +240,14 @@ Reference: `plebbit-js/src/subplebbit/subplebbit-client-manager.ts:38`, `plebbit
    b. Walk through pages to build full ordered list of threads
    c. Filter out pinned threads
    d. For each non-pinned thread beyond position (per_page * pages):
-      - Skip if already locked
-      - createCommentModeration({ locked: true }) and publish
-      - Record lockTimestamp in state file
+      - Skip if already archived
+      - createCommentModeration({ archived: true }) and publish
+      - Record archivedTimestamp in state file
    e. For each thread with replyCount >= bump_limit:
-      - Skip if already locked
-      - createCommentModeration({ locked: true }) and publish
-      - Record lockTimestamp in state file
-   f. For each locked thread where (now - lockedAt) > archive_purge_seconds:
+      - Skip if already archived
+      - createCommentModeration({ archived: true }) and publish
+      - Record archivedTimestamp in state file
+   f. For each archived thread where (now - archivedAt) > archive_purge_seconds:
       - createCommentModeration({ purged: true }) and publish
       - Remove from state file
 ```
@@ -256,7 +256,7 @@ Reference: `plebbit-js/src/subplebbit/subplebbit-client-manager.ts:38`, `plebbit
 
 | API | Purpose |
 |-----|---------|
-| `plebbit.createCommentModeration()` | Lock and purge threads |
+| `plebbit.createCommentModeration()` | Archive and purge threads |
 | `commentModeration.publish()` | Publish the moderation action |
 | `subplebbit.posts.pageCids.active` | Get active sort page CID |
 | `subplebbit.posts.pages.hot` | Preloaded first page (for calculating active sort) |
@@ -268,7 +268,7 @@ Reference: `plebbit-js/src/subplebbit/subplebbit-client-manager.ts:38`, `plebbit
 | File | Relevant code |
 |------|--------------|
 | `src/plebbit/plebbit.ts:806` | `createCommentModeration()` definition |
-| `src/publications/comment-moderation/schema.ts:24` | ModeratorOptionsSchema with `locked`, `purged` fields |
-| `src/runtime/node/subplebbit/local-subplebbit.ts:1658` | Existing locked check that blocks replies |
+| `src/publications/comment-moderation/schema.ts:24` | ModeratorOptionsSchema with `archived`, `purged` fields |
+| `src/runtime/node/subplebbit/local-subplebbit.ts:1658` | Existing archived check that blocks replies |
 | `src/runtime/node/subplebbit/db-handler.ts:2567` | `queryPostsWithActiveScore()` — active sort CTE |
 | `src/pages/util.ts` | Sort type definitions and scoring functions |

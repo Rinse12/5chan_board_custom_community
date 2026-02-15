@@ -70,16 +70,16 @@ export async function startArchiver(options: ArchiverOptions): Promise<ArchiverR
     return signer
   }
 
-  async function lockThread(commentCid: string, signer: Signer, reason: string): Promise<void> {
-    log(`locking thread ${commentCid} (${reason})`)
+  async function archiveThread(commentCid: string, signer: Signer, reason: string): Promise<void> {
+    log(`archiving thread ${commentCid} (${reason})`)
     const mod = await plebbit.createCommentModeration({
       commentCid,
-      commentModeration: { locked: true },
+      commentModeration: { archived: true },
       subplebbitAddress,
       signer,
     })
     await mod.publish()
-    state.lockedThreads[commentCid] = { lockTimestamp: Math.floor(Date.now() / 1000) }
+    state.archivedThreads[commentCid] = { archivedTimestamp: Math.floor(Date.now() / 1000) }
     saveState(statePath, state)
   }
 
@@ -92,7 +92,7 @@ export async function startArchiver(options: ArchiverOptions): Promise<ArchiverR
       signer,
     })
     await mod.publish()
-    delete state.lockedThreads[commentCid]
+    delete state.archivedThreads[commentCid]
     saveState(statePath, state)
   }
 
@@ -138,34 +138,34 @@ export async function startArchiver(options: ArchiverOptions): Promise<ArchiverR
     // Filter out pinned threads
     const nonPinned = threads.filter((t: ThreadComment) => !t.pinned)
 
-    // Lock threads beyond capacity
+    // Archive threads beyond capacity
     for (const thread of nonPinned.slice(maxThreads)) {
-      if (thread.locked) continue
-      if (state.lockedThreads[thread.cid]) continue
+      if (thread.archived) continue
+      if (state.archivedThreads[thread.cid]) continue
       try {
-        await lockThread(thread.cid, signer, 'capacity')
+        await archiveThread(thread.cid, signer, 'capacity')
       } catch (err) {
-        log.error(`failed to lock thread ${thread.cid}: ${err}`)
+        log.error(`failed to archive thread ${thread.cid}: ${err}`)
       }
     }
 
-    // Lock threads past bump limit
+    // Archive threads past bump limit
     for (const thread of nonPinned) {
-      if (thread.locked) continue
-      if (state.lockedThreads[thread.cid]) continue
+      if (thread.archived) continue
+      if (state.archivedThreads[thread.cid]) continue
       if ((thread.replyCount ?? 0) >= bumpLimit) {
         try {
-          await lockThread(thread.cid, signer, 'bump-limit')
+          await archiveThread(thread.cid, signer, 'bump-limit')
         } catch (err) {
-          log.error(`failed to lock thread ${thread.cid}: ${err}`)
+          log.error(`failed to archive thread ${thread.cid}: ${err}`)
         }
       }
     }
 
-    // Purge locked threads past archive_purge_seconds
+    // Purge archived threads past archive_purge_seconds
     const now = Math.floor(Date.now() / 1000)
-    for (const [cid, info] of Object.entries(state.lockedThreads)) {
-      if (now - info.lockTimestamp > archivePurgeSeconds) {
+    for (const [cid, info] of Object.entries(state.archivedThreads)) {
+      if (now - info.archivedTimestamp > archivePurgeSeconds) {
         try {
           await purgeThread(cid, signer)
         } catch (err) {
