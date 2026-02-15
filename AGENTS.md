@@ -4,3 +4,4 @@
 - Never use `any` — always use proper types
 - After modifying any file under `src/`, run `npx tsc --noEmit` to verify the build has no type errors
 - After modifying types in `src/types.ts`, run `npx tsc --noEmit` to ensure all dependents still compile
+- All code must work on Linux, macOS, and Windows — avoid platform-specific assumptions (paths, line endings, shell commands, etc.)
