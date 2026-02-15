@@ -36,6 +36,8 @@ jobs:
         with:
           node-version-file: '.nvmrc'
           cache: 'npm'
+      - name: Force git to use HTTPS instead of SSH
+        run: git config --global url."https://github.com/".insteadOf "ssh://git@github.com/"
       - name: Debug environment
         shell: bash
         run: |
@@ -51,7 +53,7 @@ jobs:
           npm cache ls 2>/dev/null | head -20 || echo "no cache or not supported"
           echo "--- resolved git deps in lockfile ---"
           grep -n 'git+ssh\|git+https' package-lock.json || echo "none found"
-      - name: npm install
-        run: npm install
+      - name: Install dependencies
+        run: npm ci
       - run: npx tsc --noEmit
       - run: npm test
