@@ -1,7 +1,7 @@
 import Plebbit from '@plebbit/plebbit-js'
 import Logger from '@plebbit/plebbit-logger'
 import { join } from 'node:path'
-import { loadState, saveState, defaultStateDir } from './state.js'
+import { loadState, saveState, defaultStateDir, isPidAlive } from './state.js'
 import type { ArchiverOptions, ArchiverResult, ArchiverState, Subplebbit, Signer, ThreadComment, Page } from './types.js'
 
 const log = Logger('5chan-archiver')
@@ -27,6 +27,13 @@ export async function startArchiver(options: ArchiverOptions): Promise<ArchiverR
   const stateDir = options.stateDir ?? defaultStateDir()
   const statePath = join(stateDir, `${subplebbitAddress}.json`)
   let state: ArchiverState = loadState(statePath)
+
+  if (state.lock && isPidAlive(state.lock.pid)) {
+    throw new Error(`Another archiver (PID ${state.lock.pid}) is already running for ${subplebbitAddress}`)
+  }
+  state.lock = { pid: process.pid }
+  saveState(statePath, state)
+
   let stopped = false
 
   log(`starting archiver for ${subplebbitAddress} (capacity=${maxThreads}, bumpLimit=${bumpLimit}, purgeAfter=${archivePurgeSeconds}s)`)
@@ -208,6 +215,8 @@ export async function startArchiver(options: ArchiverOptions): Promise<ArchiverR
     async stop() {
       stopped = true
       subplebbit.removeListener('update', updateHandler)
+      delete state.lock
+      saveState(statePath, state)
       await subplebbit.stop?.()
       await plebbit.destroy()
       log(`archiver stopped for ${subplebbitAddress}`)

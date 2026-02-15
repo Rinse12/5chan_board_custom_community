@@ -25,3 +25,12 @@ export function saveState(path: string, state: ArchiverState): void {
   mkdirSync(dirname(path), { recursive: true })
   writeFileSync(path, JSON.stringify(state, null, 2) + '\n')
 }
+
+export function isPidAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0)
+    return true
+  } catch {
+    return false
+  }
+}

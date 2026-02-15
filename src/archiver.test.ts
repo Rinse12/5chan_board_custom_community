@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { mkdtempSync, rmSync, existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
-import { loadState, saveState } from './state.js'
+import { loadState, saveState, isPidAlive } from './state.js'
 import type { ArchiverState, PlebbitInstance, Page, ThreadComment } from './types.js'
 import Plebbit from '@plebbit/plebbit-js'
 import { startArchiver } from './archiver.js'
@@ -745,6 +745,110 @@ describe('archiver logic', () => {
       expect(getPageCalls).toHaveLength(1)
 
       await archiver.stop()
+    })
+  })
+
+  describe('process lock', () => {
+    it('throws when lock is held by a live PID', async () => {
+      const statePath = join(stateDir, 'board.eth.json')
+      const state: ArchiverState = {
+        signers: {},
+        lockedThreads: {},
+        lock: { pid: process.pid },
+      }
+      saveState(statePath, state)
+
+      const { instance } = createMockPlebbit()
+      const mockSub = createMockSubplebbit({ pageCids: {}, pages: {} })
+      vi.mocked(instance.getSubplebbit).mockResolvedValue(mockSub as unknown as Awaited<ReturnType<PlebbitInstance['getSubplebbit']>>)
+
+      await expect(startArchiver({
+        subplebbitAddress: 'board.eth',
+        plebbitRpcUrl: 'ws://localhost:9138',
+        stateDir,
+      })).rejects.toThrow(`Another archiver (PID ${process.pid}) is already running for board.eth`)
+    })
+
+    it('succeeds when lock has stale PID', async () => {
+      const statePath = join(stateDir, 'board.eth.json')
+      const state: ArchiverState = {
+        signers: {},
+        lockedThreads: {},
+        lock: { pid: 999999 },
+      }
+      saveState(statePath, state)
+
+      const { instance } = createMockPlebbit()
+      const mockSub = createMockSubplebbit({ pageCids: {}, pages: {} })
+      vi.mocked(instance.getSubplebbit).mockResolvedValue(mockSub as unknown as Awaited<ReturnType<PlebbitInstance['getSubplebbit']>>)
+
+      const archiver = await startArchiver({
+        subplebbitAddress: 'board.eth',
+        plebbitRpcUrl: 'ws://localhost:9138',
+        stateDir,
+      })
+
+      const loaded = loadState(statePath)
+      expect(loaded.lock).toEqual({ pid: process.pid })
+      await archiver.stop()
+    })
+
+    it('releases lock on stop()', async () => {
+      const { instance } = createMockPlebbit()
+      const mockSub = createMockSubplebbit({ pageCids: {}, pages: {} })
+      vi.mocked(instance.getSubplebbit).mockResolvedValue(mockSub as unknown as Awaited<ReturnType<PlebbitInstance['getSubplebbit']>>)
+
+      const archiver = await startArchiver({
+        subplebbitAddress: 'board.eth',
+        plebbitRpcUrl: 'ws://localhost:9138',
+        stateDir,
+      })
+
+      const statePath = join(stateDir, 'board.eth.json')
+      const beforeStop = loadState(statePath)
+      expect(beforeStop.lock).toEqual({ pid: process.pid })
+
+      await archiver.stop()
+
+      const afterStop = loadState(statePath)
+      expect(afterStop.lock).toBeUndefined()
+    })
+
+    it('can start again after stop()', async () => {
+      const { instance } = createMockPlebbit()
+      const mockSub = createMockSubplebbit({ pageCids: {}, pages: {} })
+      vi.mocked(instance.getSubplebbit).mockResolvedValue(mockSub as unknown as Awaited<ReturnType<PlebbitInstance['getSubplebbit']>>)
+
+      const archiver1 = await startArchiver({
+        subplebbitAddress: 'board.eth',
+        plebbitRpcUrl: 'ws://localhost:9138',
+        stateDir,
+      })
+      await archiver1.stop()
+
+      // Re-mock Plebbit for second call since mock is consumed
+      const { instance: instance2 } = createMockPlebbit()
+      const mockSub2 = createMockSubplebbit({ pageCids: {}, pages: {} })
+      vi.mocked(instance2.getSubplebbit).mockResolvedValue(mockSub2 as unknown as Awaited<ReturnType<PlebbitInstance['getSubplebbit']>>)
+
+      const archiver2 = await startArchiver({
+        subplebbitAddress: 'board.eth',
+        plebbitRpcUrl: 'ws://localhost:9138',
+        stateDir,
+      })
+
+      const statePath = join(stateDir, 'board.eth.json')
+      const loaded = loadState(statePath)
+      expect(loaded.lock).toEqual({ pid: process.pid })
+      await archiver2.stop()
+    })
+
+    it('isPidAlive returns true for current process', () => {
+      expect(isPidAlive(process.pid)).toBe(true)
+    })
+
+    it('isPidAlive returns false for dead PID', () => {
+      expect(isPidAlive(999999)).toBe(false)
     })
   })
 
